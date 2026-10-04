@@ -1,27 +1,44 @@
 # Data
 
-This file explains **AgriCast's** suggested data sources.
+This file explains **G.A.S.P.'s** data sources.
 
 > **`DATA.md` is tracked in git. The `data/` folder is not.** Clone the repo, then populate `data/` locally.
 
-## Suggested sources (starting point)
+https://www.eia.gov/opendata/browser/natural-gas
+
+## Sources (starting point)
 
 | Source | Origin / URL | Access method | License | Sensitivity | Notes |
 |--------|--------------|---------------|---------|-------------|-------|
-| USDA NASS Quick Stats | https://quickstats.nass.usda.gov/api | REST API, free key | Public | None | Planting progress, yield, production, stocks by state/commodity |
-| USDA WASDE reports | https://www.usda.gov/oce/commodity/wasde | Monthly PDF + XLS | Public | None | Supply/demand balance sheets — the fundamental driver |
-| USDA FAS Export Sales | https://apps.fas.usda.gov/esrquery/ | Weekly report, downloadable | Public | None | Weekly export commitments — market-moving |
-| CME Group futures | https://www.cmegroup.com/market-data/ | Delayed data public; historical via `yfinance` (ZC=F, ZW=F, ZS=F) | Per-tier | None | Continuous front-month contracts are enough for v1 |
-| NOAA weather (US corn belt) | https://www.ncei.noaa.gov/cdo-web/ | REST API, free key | Public | None | Optional — for weather-conditioned features |
+| EIA Weekly Natural Gas Storage | Natural Gas → Storage → Weekly Working Gas in Underground Storage | REST API v2, free key | Public | None | **The target.** Weekly; returns the storage *level* (Bcf) — the weekly change is derived by differencing. Lower 48 total + 5 regions |
+| EIA Natural Gas Production | Natural Gas → Production → Natural Gas Gross Withdrawals and Production | REST API v2 | Public | None | Monthly, ~2-month lag. Filter to dry production, not gross withdrawals |
+| EIA Natural Gas Consumption | Natural Gas → Consumption / End Use → Natural Gas Consumption by End Use | REST API v2 | Public | None | Monthly. Residential, commercial, industrial, electric power via the process facet |
+| EIA LNG Exports | Natural Gas → Imports and Exports/Pipelines → U.S. Natural Gas Exports and Re-Exports by Country | REST API v2 | Public | None | Monthly. Filter process to LNG. Terminal-level detail available under "by Point of Exit" |
+| EIA Mexico Pipeline Exports | Same route as LNG Exports | REST API v2 | Public | None | Monthly. Filter process to pipeline, country to Mexico |
+| EIA Canadian Imports | Natural Gas → Imports and Exports/Pipelines → U.S. Natural Gas Imports by Country | REST API v2 | Public | None | Monthly. Filter process to pipeline, country to Canada |
+| Henry Hub spot price | Natural Gas → Prices → Natural Gas Spot and Futures Prices (NYMEX) | REST API v2 | Public | None | Context and fuel-switching features; not a forecast target. Futures after April 5, 2024 are not available here — spot only |
+| EIA Monthly Supply & Disposition Balance | Natural Gas → Summary → U.S. Natural Gas Monthly Supply and Disposition Balance | REST API v2 | Public | None | Monthly. EIA's own version of the balance — use it to check that our components reconcile |
+| NOAA degree days | https://www.ncei.noaa.gov/cdo-web/ | REST API, free key | Public | None | Heating and cooling degree days — the strongest demand driver. CDO is station-level; population weighting is our job |
 
 ## How to think about using each source
 
-- **Release cadence.** USDA WASDE releases monthly on a fixed schedule and is highly market-moving. Any model trained on future WASDE features has leakage. Align features to a "point-in-time" as-of date.
-- **Contract rolls.** CME futures contracts expire; use a properly rolled continuous series (`yfinance` handles this reasonably; commercial sources handle it better).
-- **Vintage.** USDA revises historical estimates. Cache the *version you trained on* to `data/raw/` — otherwise reproducibility silently breaks.
-- **License.** USDA data is public domain. CME live data isn't; delayed / historical for research is fine.
+- **Release timing.** The storage report covers the week ending **Friday** and publishes the following **Thursday** at 10:30 ET. Features must come from the *reporting* week, not the six days between the week's end and publication.
+- **Frequency mismatch.** Storage is weekly; consumption and production are monthly with a lag. A method must be built to upsample the monthly data to weekly. Errors are bound to be huge as the dataset is relatively sparse (12 points in a year).
+- **Vintage.** EIA revises. Storage gets minor weekly reclassifications; monthly production and consumption are revised for months. Every row stored must carry a `retrieved_at` timestamp so we can reconstruct the data as it stood on any past forecast date.
+- **Units.** Storage is Bcf (Billion cubic feet). Production is often Bcf/d (Billion cubic feet per day) or MMcf (Million cubic feet).
+- **License.** EIA and NOAA data are public domain.
 
 Choosing and vetting a source is a **judgment call** — surface it to a PM rather than deciding a major data direction alone.
+
+## Getting an EIA API key
+
+https://www.eia.gov/opendata/register.php
+
+Put it in a `.env` file at the repo root. **`.env` is git-ignored — never commit a key.**
+
+```
+EIA_API_KEY=your_key_here
+```
 
 ## Local layout convention
 
