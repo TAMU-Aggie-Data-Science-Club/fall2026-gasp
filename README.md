@@ -1,43 +1,52 @@
-# AgriCast — Beginner
+# G.A.S.P. - Gas Analysis and Storage Prediction
 
-*ADSC Catalyst Project · Fall 2026*
+*ADSC Project · Fall 2026*
 
 ## Overview
 
-AgriCast forecasts future prices of major US grain commodities (corn, wheat, soybeans) by combining historical prices with crop production, exports, storage, and planting statistics. The final artifact is a forecasting dashboard that puts a probabilistic price outlook in front of a non-quant decision maker.
+Natural gas is injected into underground storage facilities through the summer and withdrawn through the winter. Every Thursday at 10:30 ET, the EIA publishes how much moved in or out during the week ending the prior Friday. That number is watched closely and prices move on how far it is from analyst consensus.
+
+G.A.S.P. forecasts that number before it is published, three different ways, and measures which approach wins.
 
 ## Objective
 
-Predict commodity prices at a chosen horizon (e.g., one month ahead), with calibrated uncertainty bands, and expose the forecasts through a dashboard that also surfaces the fundamentals driving them.
+Predict the weekly change in US working gas in storage (Bcf) ahead of each EIA release, with calibrated uncertainty bands, and benchmark the forecast against naive and seasonal baselines.
 
-## Suggested tech stack
+Three approaches:
+1. **Seasonal Time-series model (SARIMA / SARIMAX)** — predict storage from its own history. Storage is overwhelmingly seasonal.
+2. **Gradient Boosting (LightGBM / XGBoost)** — predict from weather, production, and flow features. Statistical pattern matching, no physical structure.
+3. **Supply & Demand Balance** — forecast each component of the gas balance separately, then sum the identity:
 
-- **Data processing:** Python, Pandas
-- **Modeling / ML:** XGBoost, LightGBM, classical time-series (SARIMAX, Prophet) as baselines
-- **Visualization:** Plotly, Matplotlib
-- **Data sources:** USDA (NASS Quick Stats, WASDE), CME Group futures
+```
+production + imports − (res/comm + power burn + industrial + LNG exports + Mexico exports)
+    = change in storage
+```
+
+
+## Tech stack
+
+- **Data processing:** Python, Pandas, SQLite
+- **Modeling / ML:** XGBoost, LightGBM, classical time-series (SARIMA, SARIMAX)
+- **Visualization:** Plotly, Matplotlib, Streamlit
+- **Data sources:** EIA API v2 (storage, production, consumption, LNG exports), NOAA (degree days)
 
 See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
 
-## What team members will gain
-
-- Practical experience with commodity market analytics
-- A price-forecasting dashboard grounded in real fundamentals
-- Skills that sit at the intersection of economics and data science
-
-## Suggested scope (v1)
-
-Pick **one commodity** (corn is the cleanest) and **one horizon** (one month ahead).
+## Scope (v1)
 
 Build:
 
-1. Ingestion for USDA NASS + WASDE + CME futures history,
-2. Feature engineering (planting progress, ending stocks, export sales, lagged futures),
-3. Baselines: naive last-value, SARIMAX; then XGBoost / LightGBM,
-4. Proper time-series validation (walk-forward, no leakage),
-5. A forecast + uncertainty band + fundamentals-view dashboard.
+1. **Ingestion** — EIA API v2 and NOAA into SQLite, on a schedule, with a `retrieved_at` timestamp on every row so we can reconstruct what was knowable on any past date,
+2. **Feature engineering** — population-weighted heating and cooling degree days, production, LNG feedgas, lags, week-of-year,
+3. **Baselines** — 5-year seasonal average, last-value, SARIMA,
+4. **Models** — LightGBM, then the component-wise S&D balance,
+5. **Validation** — walk-forward over ~10 years of releases against the 5-year seasonal average and naive baselines,
+6. **Dashboard** — current forecast, uncertainty band, component breakdown, and historical accuracy.
 
-**Out of scope for v1:** multi-commodity portfolios, weather-driven yield modeling from raster data, options-implied volatility.
+**Stretch goal:** benchmark against the analyst consensus if a usable history can be assembled from free trade-press coverage.
+
+**Out of scope for v1:** regional (rather than national) storage, storage asset valuation, futures spread and derivatives pricing, LNG cargo-level modeling from vessel tracking.
+
 
 See [`DELIVERABLES.md`](DELIVERABLES.md) for the suggested deliverable breakdown and rough timeline.
 
