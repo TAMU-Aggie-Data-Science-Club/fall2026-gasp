@@ -1,34 +1,42 @@
 # Deliverables & Timeline
 
-> **How to read this file.** This is the PMs' best current estimate of what AgriCast needs to ship and roughly when. It is a **living plan, not a contract**. The authoritative picture lives in **GitHub Issues and the Project board**.
+> **How to read this file.** This is the PMs' best current estimate of what G.A.S.P. needs to ship and roughly when. It is a **living plan, not a contract**. The authoritative picture lives in **GitHub Issues and the Project board**.
 
 ## Milestones (suggested)
 
 | # | Deliverable | Description | Owner (role) | Target |
 |---|-------------|-------------|--------------|--------|
-| 1 | Project scoping | Pick commodity + horizon. Define success metric (MAE, MAPE, calibration of intervals). Define what a "point-in-time" feature set means. | PM | Week 1 |
-| 2 | Data ingestion | Reproducible fetchers for USDA NASS + WASDE + CME futures. Cache raw snapshots. Documented in [`DATA.md`](DATA.md). | Members | Weeks 1–2 |
-| 3 | EDA | Long-run price series, WASDE surprise reactions, planting progress vs. yield relationships. | Members | Week 2 |
-| 4 | Feature engineering | Fundamentals (stocks, exports, planting) + market features (lagged returns, roll-adjusted futures) with proper as-of alignment. | Members | Weeks 3–4 |
-| 5 | Baseline forecasts | Naive last-value, SARIMAX, Prophet. Walk-forward CV. | Members | Week 4 |
-| 6 | ML forecasts | XGBoost / LightGBM with quantile loss for intervals. Compare against baselines on the same walk-forward splits. | Members | Weeks 5–6 |
-| 7 | Dashboard | Forecast + uncertainty band, fundamentals view, feature-attribution panel. | Members + PM | Weeks 6–7 |
-| 8 | Handoff & retro | Reproducibility check, short writeup, lessons learned. | PM | Week 8 |
+| 1 | Scoping & onboarding | Everyone pulls EIA weekly storage and plots it against the 5-year range. Define the target (weekly net change in Lower 48 working gas, Bcf), the success metric (MAE in Bcf, plus interval coverage), and the as-of rule: features come only from the reporting week and data published before release. | PM + all | Week 1 |
+| 2 | Data ingestion | Reproducible fetchers for EIA weekly storage and NOAA weekly degree days into SQLite, with a `retrieved_at` timestamp on every row. Confirm ~10 years of weekly degree-day history is obtainable. Documented in [`DATA.md`](DATA.md). | Members | Weeks 1–2 |
+| 3 | EDA | Injection/withdrawal seasonality, storage vs. 5-year range, weekly change vs. heating and cooling degree days, extreme-weather weeks. | Members | Weeks 2–3 |
+| 4 | Feature engineering | Degree days aligned to the EIA reporting week (ending Friday), deviation from normal, lagged storage changes, week-of-year, inventory vs. 5-year average. | Members | Weeks 3–4 |
+| 5 | Baseline forecasts | Naive last-value, 5-year average for the same week, SARIMA, SARIMAX with degree days. Walk-forward validation over ~10 years of releases. | Members | Week 4 |
+| 6 | ML forecasts | LightGBM / XGBoost with quantile loss for intervals. Compare against baselines on the same walk-forward splits. Feature importance. | Members | Weeks 5–6 |
+| 7 | Dashboard | Streamlit: next-report forecast with uncertainty band, model comparison, historical accuracy, storage vs. 5-year range. | Members + PM | Weeks 6–7 |
+| 8 | Handoff & retro | Reproducibility check from a fresh clone, short writeup with the results table, lessons learned. | PM | Week 8 |
 
 ## Timeline (rough)
 
 ```
 Week:   1     2     3     4     5     6     7     8
-        |-----|-----|-----|-----|-----|-----|-----|
-Scope   ██
-Ingest        ████
-EDA                 ██
-Features                  ████
-Baseline                        ██
-ML models                            ████
-Dashboard                                  ████
-Retro                                              ██
+        |-----|-----|-----|-----|-----|-----|-----|-----|
+Onboard █████
+Ingest  ███████████
+EDA           ███████████
+Features            ███████████
+Baseline                  █████
+ML                              ███████████
+Dash                                  ███████████
+Retro                                             █████
 ```
+
+## Later (stretch)
+
+Not part of the v1 plan.
+
+- Benchmark against analyst consensus
+- Price reaction to storage surprises
+- Regional storage forecasts
 
 ## Working agreements
 
