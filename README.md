@@ -4,7 +4,7 @@
 
 ## Overview
 
-Natural gas is injected into underground storage facilities through the summer and withdrawn through the winter. Every Thursday at 10:30 ET, the EIA publishes how much moved in or out during the week ending the prior Friday. That number is watched closely and prices move on how far it is from analyst consensus.
+Natural gas is injected into underground storage facilities through the summer and withdrawn through the winter. Every Thursday at 10:30 ET, the EIA publishes how much moved natural as in or out during the week ending the prior Friday. That number is watched closely and prices move on how far it is from analyst consensus.
 
 G.A.S.P. forecasts that number before it is published, three different ways, and measures which approach wins.
 
