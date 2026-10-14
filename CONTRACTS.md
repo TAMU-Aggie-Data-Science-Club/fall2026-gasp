@@ -14,16 +14,19 @@ Produced by `eia.py`, stored by `db.py`, checked by `validate.py`, used by `feat
 
 Sorted by `period`, oldest first.
 
-## 2. Degree-day frame
+## 2. Weekly degree-day frame
 
-Produced by `weather_cpc.py` and `weather_noaa.py`.
+Produced by `weather_weekly.py` from a daily degree-day frame (section 4).
 
 | column | type | notes |
 |---|---|---|
-| `week_end` | datetime | last day of the source's week |
-| `region` | str | `"US"` for national |
+| `week_end` | datetime | the Friday that ends the EIA week (Saturday through Friday) |
+| `region` | str | `"US"` for the continental US; Census division number otherwise, e.g. `"3"` |
 | `measure` | str | `"hdd"` or `"cdd"` |
-| `value` | float | degree days for that week |
+| `weighting` | str | `"population"` or `"utility_gas"` |
+| `value` | float | degree days summed over the 7 days |
+
+Complete weeks only. Sorted by `week_end`, oldest first.
 
 ## 3. Forecaster
 
@@ -35,12 +38,16 @@ Written in `baselines.py` (and every model after), called by `backtest.py`.
 - returns the predicted weekly change in storage (Bcf) for the week ending `target`
 - models that need other inputs, like degree days, receive them when the forecaster is created, not through this signature. The signature never changes, so `backtest.py` works with every model
 
-## 4. Daily temperature frame
+## 4. Daily degree-day frame
 
-Input to `weather_noaa.py`. Whatever fetches daily temperatures later must return this shape.
+Produced by `weather_cpc.py`, input to `weather_weekly.py`.
 
 | column | type | notes |
 |---|---|---|
-| `date` | datetime | one row per city per day |
-| `city` | str | city name, e.g. `"Chicago"` |
-| `tavg` | float | daily average temperature, °F |
+| `date` | datetime | one row per region, measure, and weighting per day |
+| `region` | str | same as section 2 |
+| `measure` | str | same as section 2 |
+| `weighting` | str | same as section 2 |
+| `value` | float | degree days for that day |
+
+Sorted by `date`, oldest first.
