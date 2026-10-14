@@ -33,3 +33,14 @@ Written in `baselines.py` (and every model after), called by `backtest.py`.
 
 - `history` is a storage frame for one series, containing **only rows before `target`**
 - returns the predicted weekly change in storage (Bcf) for the week ending `target`
+- models that need other inputs, like degree days, receive them when the forecaster is created, not through this signature. The signature never changes, so `backtest.py` works with every model
+
+## 4. Daily temperature frame
+
+Input to `weather_noaa.py`. Whatever fetches daily temperatures later must return this shape.
+
+| column | type | notes |
+|---|---|---|
+| `date` | datetime | one row per city per day |
+| `city` | str | city name, e.g. `"Chicago"` |
+| `tavg` | float | daily average temperature, °F |
