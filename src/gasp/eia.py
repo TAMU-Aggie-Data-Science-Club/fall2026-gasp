@@ -30,6 +30,8 @@ def fetch_series(series_id: str, start: str | None = None, end: str | None = Non
             "frequency": "weekly",
             "data[0]": "value",
             "facets[series][]": series_id,
+            "sort[0][column]": "period",
+            "sort[0][direction]": "asc",
             "offset": offset,
             "length": page_size
         }
@@ -43,17 +45,17 @@ def fetch_series(series_id: str, start: str | None = None, end: str | None = Non
         response = requests.get(url, params=params, timeout=30)
         #Making an exception if the request fails
         response.raise_for_status()
-        #Converts data into "rows" untill there is no more data to get
-        rows = response.json().get("response", {}).get("data", [])
-        if not rows:
-            break
+        #Reads this page's rows and the total number of rows EIA has
+        body = response.json().get("response", {})
+        rows = body.get("data", [])
+        total = int(body.get("total", 0))
 
         all_rows.extend(rows)
+        offset += len(rows)
 
-        #Handles if total rows is greater than page_size
-        if len(rows) < page_size:
+        #Stops when EIA returns nothing or every row has been collected
+        if not rows or offset >= total:
             break
-        offset += page_size
     #Stops the project from crashing by stopping any queries that have no results
     if not all_rows:
         return pd.DataFrame({
@@ -77,4 +79,6 @@ def latest_period(route: str = "natural-gas/stor/wkly") -> pd.Timestamp:
     response.raise_for_status()
 
     end_period = response.json().get("response", {}).get('endPeriod')
+    if not end_period:
+        raise ValueError(f"EIA metadata for '{route}' has no endPeriod")
     return pd.Timestamp(end_period)

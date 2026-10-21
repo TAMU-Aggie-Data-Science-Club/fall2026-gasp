@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 
+DB_PATH = Path(__file__).resolve().parents[2] / "data" / "gasp.db"
 
-def init_db(path: str = "data/gasp.db") -> None:
+
+def init_db(path: str | Path = DB_PATH) -> None:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -19,8 +21,8 @@ def init_db(path: str = "data/gasp.db") -> None:
         """)
 
 
-def write_series(df: pd.DataFrame, retrieved_at=None) -> int:
-    init_db()
+def write_series(df: pd.DataFrame, retrieved_at=None, path: str | Path = DB_PATH) -> int:
+    init_db(path)
     rows_added = 0
 
     if retrieved_at is None:
@@ -35,7 +37,7 @@ def write_series(df: pd.DataFrame, retrieved_at=None) -> int:
 
     retrieved_at = retrieved_at.isoformat()
 
-    with sqlite3.connect("data/gasp.db") as conn:
+    with sqlite3.connect(path) as conn:
         for row in df.itertuples(index=False):
             series_id = row.series
             period = pd.Timestamp(row.period).isoformat()
@@ -71,8 +73,8 @@ def write_series(df: pd.DataFrame, retrieved_at=None) -> int:
     return rows_added
 
 
-def read_series(series_id: str, as_of=None) -> pd.DataFrame:
-    init_db()
+def read_series(series_id: str, as_of=None, path: str | Path = DB_PATH) -> pd.DataFrame:
+    init_db(path)
 
     params = [series_id]
     cutoff_clause = ""
@@ -88,7 +90,7 @@ def read_series(series_id: str, as_of=None) -> pd.DataFrame:
         cutoff_clause = "AND retrieved_at <= ?"
         params.append(cutoff.isoformat())
 
-    with sqlite3.connect("data/gasp.db") as conn:
+    with sqlite3.connect(path) as conn:
         query = f"""
             SELECT period, series, value
             FROM (
