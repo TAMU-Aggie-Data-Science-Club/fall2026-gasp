@@ -51,3 +51,36 @@ Produced by `weather_cpc.py`, input to `weather_weekly.py`.
 | `value` | float | degree days for that day |
 
 Sorted by `date`, oldest first.
+
+## 5. Weather columns
+
+Added to a storage frame by `weather_features.py`. Used by SARIMAX, LightGBM, and every model after.
+
+| column | type | notes |
+|---|---|---|
+| `hdd_utility_gas` | float | weekly HDD, weighted by gas-heating households, US |
+| `hdd_population` | float | weekly HDD, population weighted, US |
+| `cdd_population` | float | weekly CDD, population weighted, US |
+| `hdd_utility_gas_dev` | float | `hdd_utility_gas` minus its normal |
+| `hdd_population_dev` | float | `hdd_population` minus its normal |
+| `cdd_population_dev` | float | `cdd_population` minus its normal |
+
+Joined on `period` = `week_end`. The storage frame's own columns are unchanged. A week with no weather data gets NaN; it is never dropped.
+
+Normals come from `weather_weekly.add_normal`. ISO week 53 rarely has enough prior years for a normal, so week 53 rows use week 52's normal instead of NaN.
+
+## 6. Results table
+
+Produced by `evaluate.py`. Used by the dashboard.
+
+| column | type | notes |
+|---|---|---|
+| `model` | str | name of the forecaster, e.g. `"five_year_average"` |
+| `mae` | float | Bcf |
+| `rmse` | float | Bcf |
+| `bias` | float | Bcf; average of predicted minus actual, so positive means forecasts run too high |
+| `n_weeks` | int | number of weeks tested |
+| `start` | datetime | first target week |
+| `end` | datetime | last target week |
+
+One row per model, sorted by `mae`, best first.
