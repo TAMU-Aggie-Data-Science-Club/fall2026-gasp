@@ -57,22 +57,6 @@ def write_series(df: pd.DataFrame, retrieved_at=None) -> int:
             if previous is not None and previous[0] == value:
                 continue
 
-            next_version = conn.execute(
-                """
-                SELECT value
-                FROM observations
-                WHERE series = ?
-                  AND period = ?
-                  AND retrieved_at > ?
-                ORDER BY retrieved_at ASC, rowid ASC
-                LIMIT 1
-                """,
-                (series_id, period, retrieved_at)
-            ).fetchone()
-
-            if next_version is not None and next_version[0] == value:
-                continue
-
             conn.execute(
                 """
                 INSERT INTO observations
