@@ -9,23 +9,36 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
     raw_measure = "unknown"
     raw_weighting = "unknown"
     header_end_idx = 0
-    
-    # extract headers and locate where the region begins
+    #validate and extract meta data 
     for idx, line in enumerate(lines):
-        if line.startswith("Product:"):
+        cleanedline = line.lstrip('\ufeff').replace(" ", "").lower()
+        if cleanedline.startswith("product:"):
             val = line.split(":", 1)[1].strip().lower()
-            raw_measure = "hdd" if "heating" in val else "cdd" if "cooling" in val else val
-        elif line.startswith("Weights:"):
-            raw_weighting = line.split(":", 1)[1].strip().lower()
-        elif line.startswith("Region|") or line.lstrip().startswith("Region|"):
+            if "heating" in val:
+                raw_measure = "hdd"
+            elif "cooling" in val:
+                raw_measure = "cdd"
+            #if something isnt expected as a product
+            else:
+                raise ValueError(f"Unrecognized Product value: {val}")
+        elif cleanedline.startswith("weights:"):
+            val = line.split(":", 1)[1].strip().lower()
+            # match with contracts, fail if not one of the two
+            allowed_weights = ["population", "utility gas"]
+            if val not in allowed_weights:
+                raise ValueError(f"Invalid or unsupported Weights label: {val}")
+            raw_weighting = val
+            #find the end of region and the beginning of the data
+        elif cleanedline.replace(" ", "").lower().startswith(("region|", "division|")):
             header_end_idx = idx
             break
-            
-    # if region wasn't caught correctly 
+            #if no label was caught 
+    if raw_measure is None:
+        raise ValueError("Missing required 'Product:' header in CPC file.")
+    if raw_weighting is None:
+        raise ValueError("Missing required 'Weights:' header in CPC file.")
     if header_end_idx == 0:
-        pipe_counts = [line.count('|') for line in lines]
-        if max(pipe_counts) > 0:
-            header_end_idx = max(range(len(pipe_counts)), key=pipe_counts.__getitem__)
+        raise ValueError("Could not locate 'Region|' header row in CPC file.")
             
     # clean up the table by skipping empty and dashed lines and stripping trailing pipes
     cleaned_lines = []
@@ -35,7 +48,7 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
             continue
         if stripped.endswith('|'):
             stripped = stripped[:-1]
-        cleaned_lines.append(stripped)
+        cleaned_lines.append(stripped)  
         
     data_text = "\n".join(cleaned_lines)
     
@@ -44,9 +57,8 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
         io.StringIO(data_text), 
         sep="|", 
         engine="python", 
-        skipinitialspace=True, 
-        on_bad_lines="skip"
-    )
+        skipinitialspace=True
+    )   
     
     # clean the white space in the columns and drop unamed 
     df.columns = df.columns.str.strip()
@@ -73,10 +85,9 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
     df_long["region"] = df_long["region"].astype(str).str.strip()
     df_long["region"] = df_long["region"].apply(lambda r: "US" if r.upper() == "CONUS" else r)
     
-    # filter invalid rows and convert to type datetiem and float
-    df_long["date"] = pd.to_datetime(df_long["date"], format="%Y%m%d", errors="coerce")
-    df_long = df_long.dropna(subset=["date"])
-    df_long["value"] = pd.to_numeric(df_long["value"], errors="coerce")
+    # filter invalid rows and convert to type datetiem and float, explicit type casting
+    df_long["date"] = pd.to_datetime(df_long["date"], format="%Y%m%d", errors="raise")
+    df_long["value"] = pd.to_numeric(df_long["value"], errors="raise").astype(float)
     
     # reorder and sort oldest to most recent
     df_long = df_long[["date", "region", "measure", "weighting", "value"]]
@@ -87,6 +98,8 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
 def fetch_cpc_daily(file: str, start_year: int, end_year: int) -> pd.DataFrame:
     all_dfs = []
     current_year = datetime.date.today().year
+    #define today
+    today = pd.Timestamp.today().normalize()
     
     for year in range(start_year, end_year + 1):
         # loops through from the start year to end year getting the requested files 
@@ -103,9 +116,9 @@ def fetch_cpc_daily(file: str, start_year: int, end_year: int) -> pd.DataFrame:
         
         # checks if we are in theb current year, then filters out all the days that haven't happened
         if year == current_year:
-            today = pd.Timestamp.today().normalize()
             df_year = df_year[df_year["date"] <= today]
-            df_year = df_year.dropna(subset=["value"])
+        df_year = df_year.dropna(subset=["value"])
+
             
         all_dfs.append(df_year)
         
