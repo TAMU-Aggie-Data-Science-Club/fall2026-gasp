@@ -6,8 +6,8 @@ import datetime
 def parse_cpc_daily(text: str) -> pd.DataFrame:
     lines = text.strip().splitlines()
     #intialize variables
-    raw_measure = "unknown"
-    raw_weighting = "unknown"
+    raw_measure = None
+    raw_weighting = None
     header_end_idx = 0
     #validate and extract meta data 
     for idx, line in enumerate(lines):
@@ -23,11 +23,11 @@ def parse_cpc_daily(text: str) -> pd.DataFrame:
                 raise ValueError(f"Unrecognized Product value: {val}")
         elif cleanedline.startswith("weights:"):
             val = line.split(":", 1)[1].strip().lower()
-            # match with contracts, fail if not one of the two
-            allowed_weights = ["population", "utility gas"]
+            # map the header text to the CONTRACTS.md label, fail if not one of the two
+            allowed_weights = {"population": "population", "utility gas": "utility_gas"}
             if val not in allowed_weights:
                 raise ValueError(f"Invalid or unsupported Weights label: {val}")
-            raw_weighting = val
+            raw_weighting = allowed_weights[val]
             #find the end of region and the beginning of the data
         elif cleanedline.replace(" ", "").lower().startswith(("region|", "division|")):
             header_end_idx = idx
