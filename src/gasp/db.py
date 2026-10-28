@@ -1,6 +1,6 @@
+from __future__ import annotations
 import sqlite3
 from pathlib import Path
-
 import pandas as pd
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "gasp.db"
