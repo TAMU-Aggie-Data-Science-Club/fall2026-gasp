@@ -24,13 +24,27 @@ def _process_single_series(
     
     """Fetch, validate, store, and log a single EIA series."""
     #First it downloads the data from EIA and then counts how many rows there is
-    df = eia.fetch_series(series_id, start=start, end=end)
+    #If the download itself fails, log a failed receipt before raising the error
+    try:
+        df = eia.fetch_series(series_id, start=start, end=end)
+    except Exception as e:
+        runlog.log_run(
+            series=series_id,
+            start_date=start,
+            end_date=end,
+            rows_fetched=0,
+            new_rows_stored=0,
+            problems=[f"fetch failed: {e}"],
+            success=False,
+            path=path,
+        )
+        raise
     rows_fetched = len(df)
     
     #This asks validate.py to check if there are any data errors in the table
     problems = validate.validate_storage(df)
 
-    #This checks if the problem list is empty, if so then it'll crash intentinally and log a failed receipt
+    #If the problem list is not empty, it logs a failed receipt and then crashes intentionally
     if problems:
         runlog.log_run(
             series=series_id,
@@ -173,6 +187,5 @@ def refresh_weather(path: str | Path = db.DB_PATH) -> int:
     return new_rows
 
 #This is so that when python runs -m gasp.pipeline it will automatically refresh_storage for the Lower 48 series
-if __name__ == "__Main__":
+if __name__ == "__main__":
     refresh_storage([LOWER_48_SERIES], path=db.DB_PATH)
-    
