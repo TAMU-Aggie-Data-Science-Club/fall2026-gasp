@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 import pandas as pd
-from gasp import db, eia, runlog, validate
+from gasp import db, eia, runlog, validate, weather_pipeline
 
 #Deault series ID for the Lower 48 states
 LOWER_48_SERIES = "NW2_EPG0_SWO_R48_BCF"
@@ -112,6 +112,65 @@ def refresh_storage(
             path=path,
         )
     return total_new_rows
+
+# Name used for degree-day runs in the runs table, so they're easy to tell apart from storage series
+DEGREE_DAYS_LOG_NAME = "weekly_degree_days"
+
+# First year of degree days to build. Matches the start of the EIA storage
+# history (2010). Re-building from here every run is safe: write_degree_days
+# never overwrites and only stores rows that are new or changed.
+WEATHER_START_YEAR = 2010
+
+
+def refresh_weather(path: str | Path = db.DB_PATH) -> int:
+    """Build weekly degree days, validate, store, and log the run.
+
+    Same pattern as _process_single_series: build with Team B's
+    weather_pipeline.build_weekly_degree_days, check with
+    validate.validate_degree_days, store with db.write_degree_days.
+    If validation finds problems, nothing is stored, a failed run is
+    logged, and an error is raised with the problem list.
+    """
+    # Build the weekly degree-day frame (CONTRACTS.md, section 2), passed through unchanged
+    df = weather_pipeline.build_weekly_degree_days(start_year=WEATHER_START_YEAR)
+    rows_fetched = len(df)
+
+    # Date range covered by this run, for the log
+    if df.empty:
+        start_str = end_str = None
+    else:
+        start_str = df["week_end"].min().strftime("%Y-%m-%d")
+        end_str = df["week_end"].max().strftime("%Y-%m-%d")
+
+    problems = validate.validate_degree_days(df)
+
+    # Bad data: store nothing, log a failed run, and stop
+    if problems:
+        runlog.log_run(
+            series=DEGREE_DAYS_LOG_NAME,
+            start_date=start_str,
+            end_date=end_str,
+            rows_fetched=rows_fetched,
+            new_rows_stored=0,
+            problems=problems,
+            success=False,
+            path=path,
+        )
+        raise ValueError(f"Validation failed for degree days: {problems}")
+
+    # Clean data: store it and log a successful run
+    new_rows = db.write_degree_days(df, path=path)
+    runlog.log_run(
+        series=DEGREE_DAYS_LOG_NAME,
+        start_date=start_str,
+        end_date=end_str,
+        rows_fetched=rows_fetched,
+        new_rows_stored=new_rows,
+        problems=[],
+        success=True,
+        path=path,
+    )
+    return new_rows
 
 #This is so that when python runs -m gasp.pipeline it will automatically refresh_storage for the Lower 48 series
 if __name__ == "__Main__":
