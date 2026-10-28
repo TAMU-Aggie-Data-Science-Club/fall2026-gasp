@@ -132,3 +132,105 @@ def validate_storage(df: pd.DataFrame) -> list[str]:
     ):
         problems += check(df)
     return problems
+
+
+
+# A weekly degree-day total sums seven daily values. A daily
+# degree-day value of 100 already implies an extremely large
+# temperature departure from the 65°F baseline, so 700 is
+# a generous sanity ceiling for the weekly sum.
+MAX_WEEKLY_DEGREE_DAYS = 700.0
+
+
+def validate_degree_days(df: pd.DataFrame) -> list[str]:
+    """Check the weekly degree-day contract; return problems or []."""
+    problems = []
+    required = ["week_end", "region", "measure", "weighting", "value"]
+
+    # 1. Required columns
+    for col in required:
+        if col not in df.columns:
+            problems.append(f"missing column: {col}")
+
+    # 2. Column types
+    if "week_end" in df and not pd.api.types.is_datetime64_any_dtype(df["week_end"]):
+        problems.append(f"wrong type: week_end is {df['week_end'].dtype}, expected datetime")
+
+    for col in ["region", "measure", "weighting"]:
+        if col in df and not pd.api.types.is_string_dtype(df[col]):
+            problems.append(f"wrong type: {col} is {df[col].dtype}, expected str")
+
+    if "value" in df and not pd.api.types.is_float_dtype(df["value"]):
+        problems.append(f"wrong type: value is {df['value'].dtype}, expected float")
+
+    if problems:
+        return problems
+
+    # 3. Missing values
+    for col in required:
+        for idx in df.index[df[col].isna()]:
+            problems.append(f"missing value: {col} at row {idx}")
+
+    keys = ["week_end", "region", "measure", "weighting"]
+    group_keys = ["region", "measure", "weighting"]
+
+    # 4. Friday check
+    for date in df["week_end"].dropna():
+        if date.dayofweek != 4:
+            problems.append(
+                f"not a Friday: {date.strftime('%Y-%m-%d')} ({date.day_name()})"
+            )
+
+    # 5. Duplicate combinations
+    duplicates = df[df.duplicated(subset=keys, keep="first")]
+    for _, row in duplicates.iterrows():
+        problems.append(
+            f"duplicate row: {row['week_end']} "
+            f"({row['region']} {row['measure']} {row['weighting']})"
+        )
+
+    # 6. Missing weeks within each combination
+    valid_dates = df.dropna(subset=keys)
+
+    for (region, measure, weighting), group in valid_dates.groupby(group_keys):
+        fridays = group.loc[
+            group["week_end"].dt.dayofweek == 4, "week_end"
+        ]
+        if fridays.empty:
+            continue
+
+        expected = pd.date_range(
+            fridays.min(), fridays.max(), freq="W-FRI"
+        )
+        missing = expected.difference(pd.DatetimeIndex(fridays))
+
+        for date in missing:
+            problems.append(
+                f"missing week: {date.strftime('%Y-%m-%d')} "
+                f"({region} {measure} {weighting})"
+            )
+
+    # 7. Allowed measure and weighting values
+    for idx, row in df.iterrows():
+        if pd.notna(row["measure"]) and row["measure"] not in {"hdd", "cdd"}:
+            problems.append(f"invalid measure: {row['measure']} at row {idx}")
+
+        if pd.notna(row["weighting"]) and row["weighting"] not in {
+            "population", "utility_gas"
+        }:
+            problems.append(f"invalid weighting: {row['weighting']} at row {idx}")
+
+    # 8. Negative and impossible weekly totals
+    for idx, row in df.iterrows():
+        value = row["value"]
+        if pd.isna(value):
+            continue
+        if value < 0:
+            problems.append(f"negative degree days: {value} at row {idx}")
+        elif value > MAX_WEEKLY_DEGREE_DAYS:
+            problems.append(
+                f"impossible weekly total: {value} at row {idx} "
+                f"(limit {MAX_WEEKLY_DEGREE_DAYS})"
+            )
+
+    return problems
