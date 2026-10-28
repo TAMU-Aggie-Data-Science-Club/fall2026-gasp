@@ -1,4 +1,4 @@
-"""Data validation checks for the storage frame (CONTRACTS.md, section 1).
+"""Data validation checks for the storage frame and degree-day frames (CONTRACTS.md, section 1).
 
 Each check takes a storage frame and returns a list of problem messages.
 An empty list means that check passed. validate_storage runs them all.
