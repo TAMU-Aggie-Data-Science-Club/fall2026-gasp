@@ -111,3 +111,22 @@ Scoring, in `backtest.py`:
 - `walk_forward` takes an optional `interval` argument; when given, its output gains `low` and `high` columns
 - `coverage(actual, low, high) -> float`: share of weeks where `low <= actual <= high`. A well-calibrated 90% interval scores close to 0.90
 - `avg_width(low, high) -> float`: average of `high - low`, in Bcf. Narrower is better at the same coverage
+
+## 8. Saved scoreboard
+
+Written by `evaluate.save_scoreboard` into the SQLite database. Read by the dashboard. Replaced in full every time the scoreboard runs, since backtest results are recomputed rather than point-in-time.
+
+`results` table: the section 6 columns, one row per model.
+
+`predictions` table:
+
+| column | type | notes |
+|---|---|---|
+| `model` | str | same names as `results` |
+| `period` | datetime | the target week |
+| `actual` | float | Bcf |
+| `predicted` | float | Bcf |
+| `low` | float | NaN for models without an interval forecaster |
+| `high` | float | NaN for models without an interval forecaster |
+
+One row per model per tested week. Sorted by `model`, then `period`.
