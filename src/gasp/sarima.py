@@ -4,20 +4,24 @@ import pandas as pd
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 
-def make_fourier(n, start=0, period=52, K=3):
+def make_fourier(n, start=0, period=365.25 / 7, K=3):
     """Create seasonal sine and cosine features."""
     t = np.arange(start, start + n)
     features = {}
 
     for k in range(1, K + 1):
-        features[f"sin_{k}"] = np.sin(2 * np.pi * k * t / period)
-        features[f"cos_{k}"] = np.cos(2 * np.pi * k * t / period)
+        features[f"sin_{k}"] = np.sin(
+            2 * np.pi * k * t / period
+        )
+        features[f"cos_{k}"] = np.cos(
+            2 * np.pi * k * t / period
+        )
 
     return pd.DataFrame(features)
 
 
 def make_sarima(order=(1, 0, 0), refit_every=4, use_fourier=True):
-    """Return a forecaster for weekly natural gas storage changes."""
+    """Create a forecaster for weekly storage changes."""
 
     if refit_every < 1:
         raise ValueError("refit_every must be at least 1")
@@ -26,21 +30,23 @@ def make_sarima(order=(1, 0, 0), refit_every=4, use_fourier=True):
     previous_history = None
     forecasts_since_refit = 0
 
-    def forecaster(history):
+    def forecaster(history, target):
         nonlocal fitted_result
         nonlocal previous_history
         nonlocal forecasts_since_refit
 
-        # Get historical weekly changes
-        if isinstance(history, pd.DataFrame):
-            y = history["weekly_change"].dropna().to_numpy()
-        else:
-            y = pd.Series(history).dropna().to_numpy()
+        # Convert storage levels into weekly changes
+        y = (
+            history.sort_values("period")["value"]
+            .diff()
+            .dropna()
+            .to_numpy()
+        )
 
         if len(y) < 10:
             raise ValueError("Not enough historical data")
 
-        # Create seasonal features
+        # Create Fourier seasonal features
         if use_fourier:
             X = make_fourier(len(y)).to_numpy()
             X_next = make_fourier(
@@ -50,7 +56,7 @@ def make_sarima(order=(1, 0, 0), refit_every=4, use_fourier=True):
             X = None
             X_next = None
 
-        # Check whether exactly one new week was added
+        # Check whether one new observation was added
         can_update = (
             previous_history is not None
             and len(y) == len(previous_history) + 1
@@ -77,7 +83,7 @@ def make_sarima(order=(1, 0, 0), refit_every=4, use_fourier=True):
             forecasts_since_refit = 0
 
         else:
-            # Add new observation without refitting
+            # Update observations without refitting
             new_y = y[-1:]
             new_X = X[-1:] if use_fourier else None
 
@@ -87,7 +93,7 @@ def make_sarima(order=(1, 0, 0), refit_every=4, use_fourier=True):
                 refit=False
             )
 
-        # Predict next week's change
+        # Forecast next week's storage change
         forecast = fitted_result.forecast(
             steps=1,
             exog=X_next
