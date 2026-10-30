@@ -204,3 +204,5 @@ def refresh_weather(path: str | Path = db.DB_PATH) -> int:
 #This is so that when python runs -m gasp.pipeline it will automatically refresh_storage for the Lower 48 series
 if __name__ == "__main__":
     refresh_storage([LOWER_48_SERIES], path=db.DB_PATH)
+    #added refresh weather to run along with refresh storage
+    refresh_weather(path=db.DB_PATH)

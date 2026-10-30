@@ -137,8 +137,9 @@ def validate_storage(df: pd.DataFrame) -> list[str]:
 
 # A weekly degree-day total sums seven daily values. A daily
 # degree-day value of 100 already implies an extremely large
-# temperature departure from the 65°F baseline, so 700 is
-# a generous sanity ceiling for the weekly sum.
+# temperature departure from the 65°F baseline, since
+# 2000 the highest weekly total the CPC has reported is 451,
+#  which 700 is 55% above.
 MAX_WEEKLY_DEGREE_DAYS = 700.0
 
 
@@ -185,7 +186,8 @@ def validate_degree_days(df: pd.DataFrame) -> list[str]:
     duplicates = df[df.duplicated(subset=keys, keep="first")]
     for _, row in duplicates.iterrows():
         problems.append(
-            f"duplicate row: {row['week_end']} "
+            #implemented the _day function for duplicate combinations
+            f"duplicate row: {_day(row['week_end'])} "
             f"({row['region']} {row['measure']} {row['weighting']})"
         )
 
