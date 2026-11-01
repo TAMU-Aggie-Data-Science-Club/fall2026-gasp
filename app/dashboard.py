@@ -1,21 +1,21 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from gasp import db, runlog, features
+from gasp import db, runlog, features, baselines
 from gasp.pipeline import LOWER_48_SERIES
 
 st.title("Natural Gas Storage Dashboard")
 
-# runs st.cache_data so as to not requery the db on every use
-@st.cache_data
+# runs st.cache_data so as to not requery the db on every use, re-reading every 10 minutes so new data shows up
+@st.cache_data(ttl=600)
 def load_storage_data():
     return db.read_series(LOWER_48_SERIES)
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_weather_data():
     return db.read_degree_days()
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_run_logs():
     return runlog.last_runs()
 
@@ -33,7 +33,7 @@ with col1:
     if not storage_df.empty:
         #find the most recent date for storage
         newest_storage = storage_df['period'].max()
-        st.write(f"**Newest Stored Storage Week:** {newest_storage}")
+        st.write(f"**Newest Stored Storage Week:** {newest_storage.date()}")
     else:
         st.warning("No storage data found in database.")
 with col2:
@@ -99,20 +99,15 @@ st.header("3. Weekly Change")
 full_change_df = storage_df.copy()
 full_change_df['weekly_change'] = full_change_df['value'].diff()
 
-# Extract week of year to compare against historical average change
-full_change_df['week_of_year'] = full_change_df['period'].dt.isocalendar().week
-
-#calculate historical data by a week to week basis
-historical_df = full_change_df[full_change_df['period'] < full_change_df['period'].max() - pd.DateOffset(years=1)]
-avg_weekly_change = historical_df.groupby('week_of_year')['weekly_change'].mean().reset_index()
-avg_weekly_change.rename(columns={'weekly_change': 'avg_weekly_change'}, inplace=True)
-
 #filter recent changes for the last 2 years
 weekly_cutoff = storage_df['period'].max() - pd.DateOffset(years=2)
 recent_changes = full_change_df[full_change_df['period'] >= weekly_cutoff].copy()
 
-#merge recent changes and historical results
-recent_changes = pd.merge(recent_changes, avg_weekly_change, on='week_of_year', how='left')
+#five-year average change for each week, the same calculation as the baseline
+recent_changes['avg_weekly_change'] = [
+    baselines.five_year_average(storage_df[storage_df['period'] < p], p)
+    for p in recent_changes['period']
+]
 
 #prepare to plot average alongside actual
 chart_change_df = recent_changes.set_index('period')[['weekly_change', 'avg_weekly_change']]
