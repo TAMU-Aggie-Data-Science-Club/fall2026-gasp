@@ -13,7 +13,8 @@ def rmse(actual, predicted) -> float:
 def bias(actual, predicted) -> float:
     return float(np.mean(np.array(predicted) - np.array(actual)))
 
-#Measures how often the actual value falls inside those bounds.
+# Return the fraction of actual weekly changes inside their forecast bounds.
+# A result of 0.90 means the intervals covered 90% of the tested weeks.
 def coverage(actual, low, high) -> float:
     actual = np.array(actual)
     low = np.array(low)
@@ -21,10 +22,13 @@ def coverage(actual, low, high) -> float:
 
     return float(np.mean((low <= actual) & (actual <= high)))
 
-#Measures how wide the bounds are on average, in Bcf.
+# Return the average distance between lower and upper bounds in Bcf.
+# This describes how broad the forecast intervals are across the tested weeks.
 def avg_width(low, high) -> float:
     return float(np.mean(np.array(high) - np.array(low)))
 
+# Predict each target week using only earlier storage observations and return
+# its actual change, prediction, and error, plus optional interval bounds.
 def walk_forward(df, forecaster, start, end, interval=None) -> pd.DataFrame:
     start = pd.Timestamp(start) #Converts start and end into Pandas dates so Python can compare them with the dates in your data.
     end = pd.Timestamp(end)
