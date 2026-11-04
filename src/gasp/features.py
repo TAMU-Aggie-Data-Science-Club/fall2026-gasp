@@ -71,3 +71,38 @@ def add_five_year_stats(df):
     return result
 
 
+def add_seasonal_change(df) -> pd.DataFrame:
+    result = add_change(df)
+    result = add_calendar(result)
+
+    result["seasonal_change"] = np.nan
+
+    for i, row in result.iterrows():
+        year = int(row["iso_year"])
+        week = int(row["iso_week"])
+
+        if week == 53:
+            week = 52
+
+        historical = result.loc[
+            (result["iso_week"] == week)
+            & (result["iso_year"] >= year - 5)
+            & (result["iso_year"] < year),
+            "weekly_change"
+        ].dropna()
+
+        if len(historical) == 5:
+            result.at[i, "seasonal_change"] = historical.mean()
+
+    return result
+
+
+def add_surplus(df) -> pd.DataFrame:
+    result = add_five_year_stats(df)
+
+    result["surplus_lag_1"] = (
+        result["value"] - result["five_year_mean"]
+    ).shift(1)
+
+    return result
+
