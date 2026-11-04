@@ -12,7 +12,7 @@ from gasp import sarima
 
 def make_sarimax(
     weather,
-    columns=("hdd_utility_gas", "cdd_population"),
+    columns=("hdd_utility_gas_dev", "cdd_population_dev"),
     order=(1, 0, 0),
     refit_every=4,
     use_fourier=True,
@@ -100,7 +100,7 @@ def make_sarimax(
             fit = SARIMAX(
                 changes, exog=x, order=order, trend="c",
                 enforce_stationarity=False, enforce_invertibility=False
-            ).fit(disp=False)
+            ).fit(disp=False, maxiter=200)
             since_refit = 0
         elif new_count:
             fit = fit.append(changes[-new_count:], exog=x[-new_count:], refit=False)
