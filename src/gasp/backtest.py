@@ -13,7 +13,23 @@ def rmse(actual, predicted) -> float:
 def bias(actual, predicted) -> float:
     return float(np.mean(np.array(predicted) - np.array(actual)))
 
-def walk_forward(df, forecaster, start, end) -> pd.DataFrame:
+# Return the fraction of actual weekly changes inside their forecast bounds.
+# A result of 0.90 means the intervals covered 90% of the tested weeks.
+def coverage(actual, low, high) -> float:
+    actual = np.array(actual)
+    low = np.array(low)
+    high = np.array(high)
+
+    return float(np.mean((low <= actual) & (actual <= high)))
+
+# Return the average distance between lower and upper bounds in Bcf.
+# This describes how broad the forecast intervals are across the tested weeks.
+def avg_width(low, high) -> float:
+    return float(np.mean(np.array(high) - np.array(low)))
+
+# Predict each target week using only earlier storage observations and return
+# its actual change, prediction, and error, plus optional interval bounds.
+def walk_forward(df, forecaster, start, end, interval=None) -> pd.DataFrame:
     start = pd.Timestamp(start) #Converts start and end into Pandas dates so Python can compare them with the dates in your data.
     end = pd.Timestamp(end)
 
@@ -37,15 +53,31 @@ def walk_forward(df, forecaster, start, end) -> pd.DataFrame:
 
         actual = float(df.loc[i, "value"] - df.loc[i - 1, "value"]) #Weekly change is this week's storage minus last week's storage.
 
-        #It records the target date, actual change, predicted change, and error.
-        results.append({
+        # Build this week's row before adding any interval bounds.
+        row = {
             "period": target,
             "actual": actual,
             "predicted": predicted,
             "error": predicted - actual
-        })
+        }
+        # If supplied, get the interval for the same history and target.
+        if interval is not None:
+            low, high = interval(history, target)
+            low, high = float(low), float(high)
 
-    return pd.DataFrame(
-        results,
-        columns=["period", "actual", "predicted", "error"]
-    )
+            if not (low <= predicted <= high):
+                raise ValueError(
+                    f"Invalid interval for {target.date()}: "
+                    f"low={low}, predicted={predicted}, high={high}"
+                )
+
+            row["low"] = low
+            row["high"] = high
+
+        results.append(row)
+
+    columns = ["period", "actual", "predicted", "error"]
+    if interval is not None:
+        columns += ["low", "high"]
+
+    return pd.DataFrame(results, columns=columns)
