@@ -130,3 +130,69 @@ Written by `evaluate.save_scoreboard` into the SQLite database. Read by the dash
 | `high` | float | NaN for models without an interval forecaster |
 
 One row per model per tested week. Sorted by `model`, then `period`.
+
+## 9. Live forecasts
+
+Written by `live.py` each week before the EIA release (Thursday 10:30 ET). Read by the dashboard.
+
+`live_forecasts` table:
+
+| column | type | notes |
+|---|---|---|
+| `model` | str | same names as the scoreboard |
+| `target` | datetime | the Friday ending the week the upcoming report covers |
+| `predicted` | float | Bcf |
+| `low` | float | NaN for models without an interval forecaster |
+| `high` | float | NaN for models without an interval forecaster |
+| `made_at` | str | UTC ISO timestamp; always before that report's release |
+| `actual` | float | NaN until the report is released, then filled in |
+
+One row per model per target. A row is never changed after it's written, except to fill `actual`. A forecast is never made or replaced after its report is released.
+
+## 10. Explanations
+
+Written by `live.py` for each LightGBM live forecast. Read by the dashboard.
+
+`live_explanations` table:
+
+| column | type | notes |
+|---|---|---|
+| `target` | datetime | same as section 9 |
+| `feature` | str | a name from `FEATURE_COLUMNS` |
+| `label` | str | plain-English name for the dashboard, e.g. "Gas-weighted HDD vs normal" |
+| `value` | float | the feature's value that week |
+| `contribution` | float | Bcf this feature added to or subtracted from the forecast |
+| `base_value` | float | the model's average forecast before any feature; same on every row for a target |
+
+`base_value` plus the sum of `contribution` equals LightGBM's `predicted` for that target in section 9.
+
+## 11. What-if grid
+
+Written by `live.py` for the current target. Read by the dashboard's slider.
+
+`whatif` table:
+
+| column | type | notes |
+|---|---|---|
+| `model` | str | models that use weather |
+| `target` | datetime | same as section 9 |
+| `weather_change_pct` | int | from -30 to 30 in steps of 5; the target week's HDD and CDD are scaled by this percent, and each `_dev` column is recomputed as the scaled value minus its normal |
+| `predicted` | float | Bcf |
+| `low` | float | NaN for models without an interval forecaster |
+| `high` | float | NaN for models without an interval forecaster |
+
+`weather_change_pct = 0` matches that model's row in section 9.
+
+## 12. Winter outlook
+
+Written by `live.py` each week. Read by the dashboard.
+
+`winter_outlook` table:
+
+| column | type | notes |
+|---|---|---|
+| `scenario` | int | the past winter whose weather is replayed, e.g. 2014 means weather from the 2013–14 winter |
+| `period` | datetime | each future Friday from the latest stored week through the last Friday of March |
+| `storage` | float | projected working gas in storage, Bcf |
+
+Projected with SARIMAX, one week at a time: each future week uses the same ISO week's actual weather from the scenario's winter, and each projected change is added to the previous week's storage. Every scenario starts from the latest actual storage. One row per scenario per week.
