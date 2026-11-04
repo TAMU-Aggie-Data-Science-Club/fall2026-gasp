@@ -42,9 +42,14 @@ def build_feature_table(storage_df, weekly_dd) -> pd.DataFrame:
     #Add the six weather features.
     df = weather_features.add_weather(df, weekly_dd)
 
-    #These two columns will be added from Piece 1.
-    df["surplus_lag_1"] = float("nan")
-    df["seasonal_change"] = float("nan")
+    #Calculate five-year storage statistics.
+    df = features.add_five_year_stats(df)
+
+    #Calculate last week's storage surplus.
+    df = features.add_surplus(df)
+
+    #Calculate the seasonal weekly change.
+    df = features.add_seasonal_change(df)
 
     #Keep the target and required forecasting features.
     return df[["period", "weekly_change"] + FEATURE_COLUMNS]
