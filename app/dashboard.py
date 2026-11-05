@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from gasp import db, runlog, features, baselines
+from gasp import db, runlog, features, baselines, evaluate
 from gasp.pipeline import LOWER_48_SERIES
 
 st.title("Natural Gas Storage Dashboard")
@@ -114,3 +114,144 @@ chart_change_df = recent_changes.set_index('period')[['weekly_change', 'avg_week
 
 st.subheader("Recent Weekly Change vs. 5-Year Average Change")
 st.line_chart(chart_change_df)
+#Piece 2: Dashboard, model pages
+
+#Cache scoreboard results and predictions for 10 minutes
+@st.cache_data(ttl=600)
+def load_scoreboard_results():
+    return evaluate.load_results()
+
+@st.cache_data(ttl=600)
+def load_scoreboard_predictions():
+    return evaluate.load_predictions()
+
+#Fetches both of the cached dataframes for use in the dashboard
+results_df = load_scoreboard_results()
+predictions_df = load_scoreboard_predictions()
+
+#Explains what MAE< RMSE, and bias measure
+st.header("4. Model Scoreboard")
+st.caption("**MAE** (Mean Absolute Error) measured average error magnitude in bcf, "
+           "**RMSE** (Root Mean Squared Error) penalizes large misses more heavily, and "
+           "**bias** (mean signed error) shows whether a model tends to over- or under-predict." 
+)
+if results_df.empty:
+    st.warning("No saved scoreboard results found. Run 'Python -m gasp.scoreboard' first.")
+else:
+    #Sorts the results by MAE in ascending order and resets the index for display
+    sorted_results = results_df.sort_values("mae", ascending=True).reset_index(drop=True)
+    st.dataframe(sorted_results, use_container_width=True)
+
+#Actual Vs. Predicted Section
+st.header("5. Actual vs. Predicted Weekly Changes")
+
+if predictions_df.empty:
+    st.warning("No saved predictions found in database.")
+else:
+    #Ensures period is a datetime object for Altair time-series plotting and copies predictions 
+    pred_df = predictions_df.copy()
+    pred_df["period"] = pd.to_datetime(pred_df["period"])
+
+    #If there's scoreboard results then the model's dropdown list will be ordered by MAE 
+    if not results_df.empty and "model" in results_df.columns:
+        available_models = [
+            m for m in results_df.sort_values("mae")["model"].tolist() if m in pred_df["model"].unique()
+        ]
+    else:
+        available_models = sorted(pred_df["model"].unique().tolist())
+
+    #This allows the use to pick one or more models to compare in the chart, defaulting to the best model if available
+    selected_models = st.multiselect("Select one or more models to compare:",options=available_models, default=available_models[:1])
+
+    if selected_models:
+        #Filters predictions to only that were slected by the user
+        filtered_preds = pred_df[pred_df["model"].isin(selected_models)].copy()
+        #Extracts a clean series of actual weekly storage changes
+        actual_df = (filtered_preds[["period", "actual"]].drop_duplicates(subset=["period"]).sort_values("period")
+        )
+        #This builds a black line for actual weekly storage changes, with a tooltip for the week and actual value
+        actual_line = (alt.Chart(actual_df).mark_line(color="black", strokeWidth=2.5)
+                       .encode(
+                           x=alt.X("Period:T", title="week"),
+                            y=alt.Y("actual:Q", title="Weeky Storage Change (Bcf)"), 
+                            tooltip=[
+                                alt.Tooltip("period:T", title="Week"),
+                                  alt.Tooltip("actual:Q", title="Actual", format=".2f")
+                                  ]
+                                )
+                            )
+        #This builds a dashed line for each model's predictions that are selected
+        pred_lines = (
+            alt.Chart(filtered_preds).mark_line(strokeDash=[4,2], strokeWidth=2).encode(
+                x=alt.X("period:T", title="week"),
+                y=alt.Y("predicted:Q", title="Weekly Storage Change (Bcf)"),
+                color=alt.Color("model:N", title="Model"),
+                tooltip=[
+                    alt.Tooltip("period:T", title="Week"),
+                    alt.Tooltip("model:N", title="Model"),
+                    alt.Tooltip("predicted:Q", title="Predicted", format=".2f"),
+                    alt.Tooltip("actual:Q", title="Actual", format=".2f"),
+                ]
+            )
+        )
+        layers = [actual_line, pred_lines]
+        #This will check if the selected model has valid high and low predictions like SARIMAX
+        if "low" in filtered_preds.columns and "high" in filtered_preds.columns:
+            #Drops the rows where the lows and highes are NAN
+            band_df = filtered_preds.dropna(subset=["low", "high"]).copy()
+            if not band_df.empty:
+                #Shades confidence band between low and high bounds  
+                interval_band = (
+                    alt.Chart(band_df).mark_area(opacity=.25).encode(
+                        x=alt.X("period:T", title="Week"),
+                        y=alt.Y("Low:Q", title="Weekly Storage Change (Bcf)"),
+                        y2="high:Q",
+                        color=alt.Color("model:N", title="Model"),
+                    )
+                )
+                layers.insert(0, interval_band)
+        #This combines all active layers and displays the interactive chart
+        avp_chart = (alt.layer(*layers).properties(height=450, 
+                                                   title="Actual vs. Predicted Weekly Storage Changes (Black = Actual)")
+                                                   .interactive())
+        st.altair_chart(avp_chart, use_container_width=True)
+    else:
+        st.info("Select at least one model above to view predictions.")
+
+#MAE by Month Section
+st.header("6. MAE by Month")
+
+if not predictions_df.empty:
+    #Copies predictions and converts period to datetime
+    monthly_df = predictions_df.copy()
+    monthly_df["period"] = pd.to_datetime(monthly_df["period"])
+    
+    #Weekly absolute error 
+    monthly_df["abs_error"] = monthly_df["actual"] - monthly_df["predicted"]
+
+    #Calculates the month number and month name for labels
+    monthly_df["month_num"] = monthly_df["period"].dt.month
+    monthly_df["month_name"] = monthly_df["period"].dt.strftime("%b")
+    month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    #Calculates the absolute errors by model and month to get Monthly MAE
+    mae_by_month = (
+        monthly_df.groupby(["model", "month_num", "month_name"], as_index=False)["abs_error"]
+        .mean().rename(columns={"abs_error": "mae"}).sort_values("month_num")
+    )
+
+    month_chart = (
+        alt.Chart(mae_by_month).mark_bar().encode(
+            x=alt.X("month_name:N", sort=month_order, title="Month"),
+            xOffset="model:N",
+            y=alt.Y("mae:Q", title="Mean Absolute Error (Bcf)"),
+            color=alt.Color("model:N", title="Model"),
+            tooltip=[
+                alt.Tooltip("model:N", title="Model"),
+                alt.Tooltip("month_name:N", title="Month"),
+                alt.Tooltip("mae:Q", title="MAE (Bcf)", format=".2f"),
+            ],
+        )
+        .properties(height=400, title="Model Mean Absolute Error by Month")
+    )
+    st.altair_chart(month_chart,use_container_width=True)
