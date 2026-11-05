@@ -116,27 +116,33 @@ st.subheader("Recent Weekly Change vs. 5-Year Average Change")
 st.line_chart(chart_change_df)
 #Piece 2: Dashboard, model pages
 
-#Cache scoreboard results and predictions for 10 minutes
+#Cache scoreboard results and predictions for 10 minutes; an empty table if the scoreboard hasn't been saved yet
 @st.cache_data(ttl=600)
 def load_scoreboard_results():
-    return evaluate.load_results()
+    try:
+        return evaluate.load_results()
+    except Exception:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=600)
 def load_scoreboard_predictions():
-    return evaluate.load_predictions()
+    try:
+        return evaluate.load_predictions()
+    except Exception:
+        return pd.DataFrame()
 
 #Fetches both of the cached dataframes for use in the dashboard
 results_df = load_scoreboard_results()
 predictions_df = load_scoreboard_predictions()
 
-#Explains what MAE< RMSE, and bias measure
+#Explains what MAE, RMSE, and bias measure
 st.header("4. Model Scoreboard")
-st.caption("**MAE** (Mean Absolute Error) measured average error magnitude in bcf, "
+st.caption("**MAE** (Mean Absolute Error) measures average error magnitude in Bcf, "
            "**RMSE** (Root Mean Squared Error) penalizes large misses more heavily, and "
            "**bias** (mean signed error) shows whether a model tends to over- or under-predict." 
 )
 if results_df.empty:
-    st.warning("No saved scoreboard results found. Run 'Python -m gasp.scoreboard' first.")
+    st.warning("No saved scoreboard results found. Run 'python -m gasp.scoreboard' first.")
 else:
     #Sorts the results by MAE in ascending order and resets the index for display
     sorted_results = results_df.sort_values("mae", ascending=True).reset_index(drop=True)
@@ -172,8 +178,8 @@ else:
         #This builds a black line for actual weekly storage changes, with a tooltip for the week and actual value
         actual_line = (alt.Chart(actual_df).mark_line(color="black", strokeWidth=2.5)
                        .encode(
-                           x=alt.X("Period:T", title="week"),
-                            y=alt.Y("actual:Q", title="Weeky Storage Change (Bcf)"), 
+                           x=alt.X("period:T", title="Week"),
+                            y=alt.Y("actual:Q", title="Weekly Storage Change (Bcf)"), 
                             tooltip=[
                                 alt.Tooltip("period:T", title="Week"),
                                   alt.Tooltip("actual:Q", title="Actual", format=".2f")
@@ -204,7 +210,7 @@ else:
                 interval_band = (
                     alt.Chart(band_df).mark_area(opacity=.25).encode(
                         x=alt.X("period:T", title="Week"),
-                        y=alt.Y("Low:Q", title="Weekly Storage Change (Bcf)"),
+                        y=alt.Y("low:Q", title="Weekly Storage Change (Bcf)"),
                         y2="high:Q",
                         color=alt.Color("model:N", title="Model"),
                     )
@@ -227,7 +233,7 @@ if not predictions_df.empty:
     monthly_df["period"] = pd.to_datetime(monthly_df["period"])
     
     #Weekly absolute error 
-    monthly_df["abs_error"] = monthly_df["actual"] - monthly_df["predicted"]
+    monthly_df["abs_error"] = (monthly_df["actual"] - monthly_df["predicted"]).abs()
 
     #Calculates the month number and month name for labels
     monthly_df["month_num"] = monthly_df["period"].dt.month
