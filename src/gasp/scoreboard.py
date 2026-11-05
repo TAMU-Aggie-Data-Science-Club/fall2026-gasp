@@ -1,6 +1,15 @@
 """Refresh the saved scoreboard with python -m gasp.scoreboard."""
 
-from gasp import baselines, db, evaluate, pipeline, sarima, weather_features
+from gasp import (
+    baselines,
+    db,
+    evaluate,
+    feature_table,
+    pipeline,
+    sarima,
+    weather_features,
+)
+from gasp.lightgbm_model import make_lightgbm
 from gasp.sarimax import make_sarimax
 
 
@@ -19,6 +28,17 @@ def main() -> None:
             "pipeline.refresh_weather before running the scoreboard."
         )
     storage_with_weather = weather_features.add_weather(storage, weekly_weather)
+
+    # Build lag, seasonal, and weather features for LightGBM.
+    lightgbm_features = feature_table.build_feature_table(
+        storage,
+        weekly_weather,
+    )
+
+    lightgbm_forecaster = make_lightgbm(
+        lightgbm_features,
+        refit_every=4,
+    )
 
     # Use weather deviations for SARIMAX
     sarimax_weather = storage_with_weather.dropna(
@@ -40,6 +60,7 @@ def main() -> None:
         "five_year_average": baselines.five_year_average,
         "sarima": sarima.make_sarima(),
         "sarimax": sarimax_forecaster,
+        "lightgbm": lightgbm_forecaster,
     }
 
     intervals = {
