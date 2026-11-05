@@ -1,6 +1,16 @@
 """Refresh the saved scoreboard with python -m gasp.scoreboard."""
 
-from gasp import baselines, db, evaluate, pipeline, sarima, weather_features
+from gasp import (
+    baselines,
+    db,
+    evaluate,
+    feature_table,
+    pipeline,
+    sarima,
+    weather_features,
+)
+from gasp.lightgbm_model import make_lightgbm
+from gasp.sarimax import make_sarimax
 
 
 # Build the 2021-2025 scoreboard from stored storage and weather data, save the
@@ -19,12 +29,42 @@ def main() -> None:
         )
     storage_with_weather = weather_features.add_weather(storage, weekly_weather)
 
-    # Add SARIMAX and its interval function after Piece 1 merges.
+    # Build lag, seasonal, and weather features for LightGBM.
+    lightgbm_features = feature_table.build_feature_table(
+        storage,
+        weekly_weather,
+    )
+
+    lightgbm_forecaster = make_lightgbm(
+        lightgbm_features,
+        refit_every=4,
+    )
+
+    # Use weather deviations for SARIMAX
+    sarimax_weather = storage_with_weather.dropna(
+        subset=["hdd_utility_gas_dev", "cdd_population_dev"]
+    ).copy()
+
+    sarimax_forecaster, sarimax_interval = make_sarimax(
+        weather=sarimax_weather,
+        columns=("hdd_utility_gas_dev", "cdd_population_dev"),
+        order=(1, 0, 0),
+        refit_every=4,
+        use_fourier=True,
+    )
+
+    # Register all models and their prediction intervals.
     forecasters = {
         "last_change": baselines.last_change,
         "same_week_last_year": baselines.same_week_last_year,
         "five_year_average": baselines.five_year_average,
         "sarima": sarima.make_sarima(),
+        "sarimax": sarimax_forecaster,
+        "lightgbm": lightgbm_forecaster,
+    }
+
+    intervals = {
+        "sarimax": sarimax_interval,
     }
 
     # Saving performs one backtest per model and writes both scoreboard tables.
@@ -33,6 +73,7 @@ def main() -> None:
         forecasters,
         start="2021-01-01",
         end="2025-12-31",
+        intervals=intervals,
         path=path,
     )
     print(f"Saved the 2021-2025 scoreboard to {path}")
