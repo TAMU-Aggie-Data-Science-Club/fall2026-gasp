@@ -32,7 +32,7 @@ MODEL_LABELS: dict[str, str] = {
 GLOSSARY: dict[str, str] = {
     "Bcf": "Billion cubic feet, the standard volume unit used to measure natural gas in underground storage. One Bcf is enough gas to heat roughly 10,000 U.S. homes for a year.",
     "working gas in storage": "The volume of natural gas in underground caverns and depleted reservoirs that can actually be pumped out and delivered to consumers. It excludes permanent 'base gas' needed to maintain underground pressure.",
-    "injection": "A positive weekly storage change (+Bcf), meaning utilities produced more gas than the country burned and pumped the extra into underground storage. Injections usually happen during mild spring through fall weather.",
+    "injection": "A positive weekly storage change (+Bcf), meaning more gas was produced than the country burned and the extra was pumped into underground storage. Injections usually happen during mild spring through fall weather.",
     "withdrawal": "A negative weekly storage change (-Bcf), meaning the country burned more gas than was produced and pulled reserves out of storage. Withdrawals mainly happen in winter when heating demand spikes.",
     "weekly change": "The net amount of natural gas added to (injection) or removed from (withdrawal) storage from one Friday to the next, measured in Bcf.",
     "EIA weekly storage report": "The official U.S. Energy Information Administration survey released every Thursday at 10:30 AM ET reporting total working gas in storage as of the prior Friday.",

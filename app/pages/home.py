@@ -41,6 +41,14 @@ def fetch_live_forecasts(path: str | Path = db.DB_PATH) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def fetch_results(path: str | Path = db.DB_PATH) -> pd.DataFrame:
+    """Load the saved scoreboard, or an empty table if the scoreboard hasn't been run yet."""
+    try:
+        return evaluate.load_results(path=path)
+    except Exception:
+        return pd.DataFrame()
+
+
 def format_headline_forecast(
     predicted: float,
     target_period: pd.Timestamp,
@@ -89,7 +97,7 @@ def render_home(path: str | Path = db.DB_PATH) -> None:
     # Show a loading spinner while we read the database tables
     with st.spinner("Checking latest forecasts and storage data..."):
         live_df = fetch_live_forecasts(path=path)
-        results_df = evaluate.load_results(path=path)
+        results_df = fetch_results(path=path)
         storage_df = db.read_series(LOWER_48_SERIES, path=path)
         weather_df = db.read_degree_days(path=path)
 
@@ -112,14 +120,13 @@ def render_home(path: str | Path = db.DB_PATH) -> None:
         render_empty_state("The first live forecast runs Wednesday 11/11.")
         return
 
-    # Copy the dataframe and support either 'period' or 'target_period' as the date column name
+    # Copy the dataframe and convert the target week (CONTRACTS.md, section 9) to dates
     live_df = live_df.copy()
-    period_col = "period" if "period" in live_df.columns else "target_period"
-    live_df[period_col] = pd.to_datetime(live_df[period_col])
+    live_df["target"] = pd.to_datetime(live_df["target"])
 
     # Filter down to only the rows for the most recent target forecast week
-    target_week = live_df[period_col].max()
-    week_forecasts = live_df[live_df[period_col] == target_week].copy()
+    target_week = live_df["target"].max()
+    week_forecasts = live_df[live_df["target"] == target_week].copy()
 
     # Find which live model has the best (lowest) MAE on the saved backtest scoreboard
     best_model_row = None
@@ -165,8 +172,8 @@ def render_home(path: str | Path = db.DB_PATH) -> None:
     if five_yr_val is not None and pd.notna(five_yr_val):
         diff = pred_val - five_yr_val
         comparison_line = (
-            f"For comparison, the 5-year average for this week is a **{format_bcf_change(five_yr_val)}** "
-            f"({abs(diff):.0f} Bcf {'more' if diff > 0 else 'less'} net addition than our lead forecast)."
+            f"The 5-year average for this week is a **{format_bcf_change(five_yr_val)}**; "
+            f"our forecast is **{abs(diff):.0f} Bcf {'higher' if diff > 0 else 'lower'}**."
         )
 
     # Draw the main Headline Forecast Card using a single clean border container 
@@ -214,4 +221,3 @@ def render_home(path: str | Path = db.DB_PATH) -> None:
 
 # Run the Home page function when Streamlit loads this file
 render_home()
-

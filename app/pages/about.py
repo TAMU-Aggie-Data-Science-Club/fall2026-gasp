@@ -13,9 +13,9 @@ st.title("About This Project & Glossary")
 #Simple explanation of what the GASP project is
 st.subheader("What This Project Is")
 st.markdown(
-    "The **Gas Analytics & Storage Predictor (GASP)** is an end-to-end data pipeline and forecasting dashboard "
+    "**Gas Analysis and Storage Prediction (G.A.S.P.)** is an end-to-end data pipeline and forecasting dashboard "
     "built by the Texas A&M Aggie Data Science Club. Every week, it tracks U.S. Lower 48 underground natural gas "
-    "inventories reported by the Energy Information Administration (EIA) alongside regional temperatures from the "
+    "inventories reported by the Energy Information Administration (EIA) alongside temperatures from the "
     "NOAA Climate Prediction Center (CPC) to forecast the upcoming Thursday storage report."
 )
 
@@ -23,7 +23,7 @@ st.markdown(
 st.subheader("How the Forecast Works")
 st.markdown(
     "1. **Automated Data Pipeline:** Each week, our SQLite database ingests the latest EIA working gas storage series "
-    "and NOAA regional Heating and Cooling Degree Days (weighted by gas-heated homes and population).\n"
+    "and NOAA Heating and Cooling Degree Days (weighted by gas-heated homes and population).\n"
     "2. **Statistical & Machine Learning Models:** We compare simple historical benchmarks (like the 5-year seasonal average) "
     "against time-series models (SARIMA and weather-adjusted SARIMAX) and gradient-boosted decision trees (LightGBM).\n"
     "3. **Walk-Forward Backtesting & Calibrated Ranges:** Every model is evaluated on a strict 2021–2025 walk-forward "

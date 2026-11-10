@@ -18,16 +18,23 @@ from app.components import (
 
 # Cache the database queries for 10 minutes (600 seconds) so every click on the webpage
 # reuses the data in memory instead of reading the SQLite database file from scratch.
+# Each returns an empty table if the scoreboard hasn't been saved yet, so the empty states show.
 @st.cache_data(ttl=600)
 def load_scoreboard_results() -> pd.DataFrame:
     # Load the summary metrics table (MAE, RMSE, bias, coverage) saved by Team C
-    return evaluate.load_results()
+    try:
+        return evaluate.load_results()
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=600)
 def load_scoreboard_predictions() -> pd.DataFrame:
     # Load the week-by-week historical backtest predictions and 90% interval bounds
-    return evaluate.load_predictions()
+    try:
+        return evaluate.load_predictions()
+    except Exception:
+        return pd.DataFrame()
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.20) -> str:
@@ -210,7 +217,6 @@ else:
 
         # Lock the chart's X and Y axes to the exact min/max of the data so users can box-zoom in
         # and double-click to reset, but can never zoom out into empty space past the data.
-        # Note: x_title is set strictly to "Week" per the Piece 1 instructions[span_0](start_span)[span_0](end_span).
         apply_chart_bounds(
             fig_avp,
             x_min=filtered_preds["period"].min(),
@@ -309,4 +315,3 @@ if not predictions_df.empty:
         },
     )
     st.plotly_chart(fig_month, use_container_width=True)
-
