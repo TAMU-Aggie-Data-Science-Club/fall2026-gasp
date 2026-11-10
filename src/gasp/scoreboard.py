@@ -9,7 +9,7 @@ from gasp import (
     sarima,
     weather_features,
 )
-from gasp.lightgbm_model import make_lightgbm
+from gasp.lightgbm_model import make_lightgbm, make_lightgbm_interval
 from gasp.sarimax import make_sarimax
 
 
@@ -40,6 +40,12 @@ def main() -> None:
         refit_every=4,
     )
 
+    lightgbm_interval = make_lightgbm_interval(
+        lightgbm_features,
+        refit_every=4,
+        calibrate=True,
+    )
+
     # Use weather deviations for SARIMAX
     sarimax_weather = storage_with_weather.dropna(
         subset=["hdd_utility_gas_dev", "cdd_population_dev"]
@@ -65,6 +71,7 @@ def main() -> None:
 
     intervals = {
         "sarimax": sarimax_interval,
+        "lightgbm": lightgbm_interval,
     }
 
     # Saving performs one backtest per model and writes both scoreboard tables.
