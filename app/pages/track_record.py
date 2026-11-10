@@ -14,6 +14,7 @@ from app.components import (
     format_bcf_change,
     format_model_name,
     get_model_color,
+    help_text,
     render_empty_state,
     term_tip,
 )
@@ -23,7 +24,7 @@ from gasp import db
 REQUIRED_COLUMNS = ["model", "target", "predicted", "low", "high", "actual"]
 
 
-# work for the data
+#work on data
 
 
 # load the live forecasts, empty table if they don't exist yet
@@ -108,7 +109,7 @@ def summarize(scored: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("mae").reset_index(drop=True)
 
 
-# helpers for the display
+#work on display helpers
 
 
 # "Nov 6" style date
@@ -204,7 +205,7 @@ def build_chart(scored: pd.DataFrame, models: list[str]) -> go.Figure:
     return fig
 
 
-# work for the actual webpage
+#work on the page
 
 
 def render() -> None:
@@ -257,10 +258,20 @@ def render() -> None:
                 ],
             }
         )
-        st.dataframe(table, hide_index=True)
-        st.caption(
-            "Running MAE is each model's average miss across every live week with a result. "
-            "Bias above 0 means the model has tended to forecast too high."
+        # hover over a column name to see what it means
+        st.dataframe(
+            table,
+            hide_index=True,
+            column_config={
+                "Running MAE (Bcf)": st.column_config.Column(help=help_text("MAE")),
+                "Bias (Bcf)": st.column_config.Column(help=help_text("bias")),
+                "Actual landed inside range": st.column_config.Column(help=help_text("forecast range (90%)")),
+            },
+        )
+        st.markdown(
+            f"Running {term_tip('MAE')} is each model's average miss across every live week with a result, "
+            f"in {term_tip('Bcf')}. {term_tip('bias', 'Bias')} above 0 means the model has tended to forecast too high.",
+            unsafe_allow_html=True,
         )
 
     # chart: pick which models to show (best three to start)
@@ -272,11 +283,13 @@ def render() -> None:
     )
     if chosen:
         st.plotly_chart(build_chart(scored, chosen))
-        st.caption(
+        st.markdown(
             "How to read this: each colored line is a model's forecast for a week, and the shaded band "
-            "around it is its 90% range. The dark line is what the EIA reported. Below 0 means gas was "
-            "pulled out of storage (a withdrawal); above 0 means gas was added (an injection). "
-            "Drag to zoom in, double-click to reset."
+            f"around it is its {term_tip('forecast range (90%)', '90% range')}. The dark line is what the EIA "
+            f"reported, in {term_tip('Bcf')}. Below 0 means gas was pulled out of storage "
+            f"(a {term_tip('withdrawal')}); above 0 means gas was added (an {term_tip('injection')}). "
+            "Drag to zoom in, double-click to reset.",
+            unsafe_allow_html=True,
         )
     else:
         st.info("Pick at least one model to see the chart.")
@@ -297,10 +310,20 @@ def render() -> None:
             else f"result due Thursday {short_date(target + pd.Timedelta(days=6))}"
         )
         with st.expander(f"Week ending {short_date(target)} ({status})", expanded=(i == 0)):
-            st.dataframe(week_table(g, released), hide_index=True)
-    st.caption(
+            st.dataframe(
+                week_table(g, released),
+                hide_index=True,
+                column_config={
+                    "Forecast (Bcf)": st.column_config.Column(help=help_text("Bcf")),
+                    "90% range (Bcf)": st.column_config.Column(help=help_text("forecast range (90%)")),
+                    "Running MAE (Bcf)": st.column_config.Column(help=help_text("MAE")),
+                },
+            )
+    st.markdown(
         "Error is forecast minus actual, so a positive error means the forecast was too high. "
-        "Negative numbers are withdrawals and positive numbers are injections."
+        f"Negative numbers are {term_tip('withdrawal', 'withdrawals')} and positive numbers are "
+        f"{term_tip('injection', 'injections')}.",
+        unsafe_allow_html=True,
     )
 
 
