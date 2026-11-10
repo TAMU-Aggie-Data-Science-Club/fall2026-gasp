@@ -1,0 +1,8 @@
+[theme]
+# Use a clean, high-contrast light editorial theme (like an EIA or Fed research report)
+base = "light"
+primaryColor = "#1B4F72"
+backgroundColor = "#FAF9F5"
+secondaryBackgroundColor = "#EFECE6"
+textColor = "#18222C"
+font = "sans serif"
