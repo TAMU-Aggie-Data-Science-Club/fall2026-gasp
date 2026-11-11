@@ -10,9 +10,43 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from gasp import sarima
 
 
+DEFAULT_WEATHER_COLUMNS = ("hdd_utility_gas_dev", "cdd_population_dev")
+
+
+def build_sarimax_inputs(
+    weather, periods, start=0, *, columns=DEFAULT_WEATHER_COLUMNS, use_fourier=True,
+):
+    """Select weather by Friday and add seasonal terms starting at week offset start."""
+    dates = pd.DatetimeIndex(pd.to_datetime(periods))
+    absent = dates.difference(weather.index)
+    if len(absent):
+        raise ValueError(f"Missing weather for week(s): {list(absent.strftime('%Y-%m-%d'))}")
+    matrix = weather.loc[dates, list(columns)].to_numpy(dtype=float)
+    bad = ~np.isfinite(matrix).all(axis=1)
+    if bad.any():
+        raise ValueError(f"Missing or invalid weather values for week(s): "
+                         f"{list(dates[bad].strftime('%Y-%m-%d'))}")
+    if use_fourier:
+        seasonal = np.asarray(sarima.make_fourier(len(dates), start=start), dtype=float)
+        if seasonal.ndim == 1:
+            seasonal = seasonal.reshape(-1, 1)
+        if seasonal.shape[0] != len(dates):
+            raise ValueError("sarima.make_fourier returned an unexpected row count")
+        matrix = np.column_stack((matrix, seasonal))
+    return matrix
+
+
+def fit_sarimax(changes, exog, *, order=(1, 0, 0)):
+    """Fit weekly storage changes with the same settings as the scoreboard."""
+    return SARIMAX(
+        changes, exog=exog, order=order, trend="c",
+        enforce_stationarity=False, enforce_invertibility=False,
+    ).fit(disp=False, maxiter=200)
+
+
 def make_sarimax(
     weather,
-    columns=("hdd_utility_gas_dev", "cdd_population_dev"),
+    columns=DEFAULT_WEATHER_COLUMNS,
     order=(1, 0, 0),
     refit_every=4,
     use_fourier=True,
@@ -37,27 +71,6 @@ def make_sarimax(
     state = {"fit": None, "periods": (), "changes": np.array([]),
              "exog": None, "since_refit": 0, "cached_key": None,
              "cached_result": None}
-
-    def features(periods, start):
-        dates = pd.DatetimeIndex(pd.to_datetime(periods))
-        absent = dates.difference(w.index)
-        if len(absent):
-            raise ValueError(f"Missing weather for week(s): {list(absent.strftime('%Y-%m-%d'))}")
-        values = w.loc[dates, list(columns)]
-        bad = ~np.isfinite(values.to_numpy(dtype=float)).all(axis=1)
-        if bad.any():
-            raise ValueError(f"Missing or invalid weather values for week(s): "
-                             f"{list(dates[bad].strftime('%Y-%m-%d'))}")
-        matrix = values.to_numpy(dtype=float)
-        if use_fourier:
-            # The existing SARIMA module is the authoritative Fourier implementation.
-            seasonal = np.asarray(sarima.make_fourier(len(dates), start=start), dtype=float)
-            if seasonal.ndim == 1:
-                seasonal = seasonal.reshape(-1, 1)
-            if seasonal.shape[0] != len(dates):
-                raise ValueError("sarima.make_fourier returned an unexpected row count")
-            matrix = np.column_stack((matrix, seasonal))
-        return matrix
 
     def compute(history, target):
         target = pd.Timestamp(target)
@@ -85,8 +98,10 @@ def make_sarimax(
         if key == state["cached_key"]:
             return state["cached_result"]
 
-        x = features(dates, start=0)
-        target_x = features([target], start=len(changes))
+        x = build_sarimax_inputs(w, dates, columns=columns, use_fourier=use_fourier)
+        target_x = build_sarimax_inputs(
+            w, [target], start=len(changes), columns=columns, use_fourier=use_fourier,
+        )
 
         fit = state["fit"]
         old_dates = state["periods"]
@@ -97,10 +112,7 @@ def make_sarimax(
                           and np.array_equal(x[:len(old_dates)], state["exog"]))
         new_count = len(dates) - len(old_dates) if prefix_matches else len(dates)
         if not prefix_matches or state["since_refit"] + new_count >= refit_every:
-            fit = SARIMAX(
-                changes, exog=x, order=order, trend="c",
-                enforce_stationarity=False, enforce_invertibility=False
-            ).fit(disp=False, maxiter=200)
+            fit = fit_sarimax(changes, x, order=order)
             since_refit = 0
         elif new_count:
             fit = fit.append(changes[-new_count:], exog=x[-new_count:], refit=False)
