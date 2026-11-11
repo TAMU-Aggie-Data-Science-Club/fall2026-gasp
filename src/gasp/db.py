@@ -2,8 +2,13 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 import pandas as pd
+import os
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "gasp.db"
+DB_PATH = (
+    Path(os.environ["GASP_DB_PATH"])
+    if os.environ.get("GASP_DB_PATH")
+    else Path(__file__).resolve().parents[2] / "data" / "gasp.db"
+)
 
 
 def init_db(path: str | Path = DB_PATH) -> None:

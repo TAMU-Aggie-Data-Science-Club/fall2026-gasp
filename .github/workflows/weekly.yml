@@ -1,0 +1,104 @@
+name: weekly
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 23 * * 3"   
+    - cron: "0 17 * * 4" 
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run by hand"
+        type: choice
+        options: [merge, forecast, score]
+        default: forecast
+
+# Jobs queue instead of racing each other to push `live`.
+concurrency:
+  group: live-branch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  GASP_DB_PATH: deploy/gasp.db
+  EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+
+jobs:
+  merge:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.job == 'merge')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: live
+          fetch-depth: 0
+      - name: Merge main into live
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge origin/main --no-edit
+          git push origin live
+
+  forecast:
+    if: (github.event_name == 'schedule' && github.event.schedule == '0 23 * * 3') || (github.event_name == 'workflow_dispatch' && inputs.job == 'forecast')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: live
+          fetch-depth: 0
+      - name: Merge main into live
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge origin/main --no-edit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Pipeline, scoreboard, live forecast
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m gasp.pipeline
+          python -m gasp.scoreboard
+          python -m gasp.live forecast
+      - name: Commit and push deploy/gasp.db
+        run: |
+          git add deploy/gasp.db
+          git diff --cached --quiet || git commit -m "Weekly forecast: update deploy/gasp.db"
+          git push origin live
+
+  score:
+    if: (github.event_name == 'schedule' && github.event.schedule == '0 17 * * 4') || (github.event_name == 'workflow_dispatch' && inputs.job == 'score')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: live
+          fetch-depth: 0
+      - name: Merge main into live
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge origin/main --no-edit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Pipeline and score
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m gasp.pipeline
+          python -m gasp.live score
+      - name: Commit and push deploy/gasp.db
+        run: |
+          git add deploy/gasp.db
+          git diff --cached --quiet || git commit -m "Weekly score: update deploy/gasp.db"
+          git push origin live
