@@ -53,3 +53,20 @@ def build_feature_table(storage_df, weekly_dd) -> pd.DataFrame:
 
     #Keep the target and required forecasting features.
     return df[["period", "weekly_change"] + FEATURE_COLUMNS]
+
+
+FEATURE_LABELS = {
+    "iso_week": "Week of the year",
+    "weekly_change_lag_1": "Last week's storage change",
+    "weekly_change_lag_2": "Storage change two weeks ago",
+    "weekly_change_lag_52": "Storage change 52 weeks ago",
+    "lag_1": "Last week's storage level",
+    "surplus_lag_1": "Last week's storage surplus",
+    "seasonal_change": "Average change for this week over 5 years",
+    "hdd_utility_gas": "Gas-weighted heating degree days",
+    "hdd_population": "Population-weighted heating degree days",
+    "cdd_population": "Population-weighted cooling degree days",
+    "hdd_utility_gas_dev": "Gas-weighted heating vs normal",
+    "hdd_population_dev": "Population-weighted heating vs normal",
+    "cdd_population_dev": "Population-weighted cooling vs normal",
+}
