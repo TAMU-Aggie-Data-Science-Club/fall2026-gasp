@@ -9,3 +9,4 @@ statsmodels>=0.14
 scikit-learn>=1.4
 streamlit>=1.36
 lightgbm>=4.3
+pytest>=8.0
