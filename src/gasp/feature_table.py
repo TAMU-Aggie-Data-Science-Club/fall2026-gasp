@@ -16,7 +16,10 @@ FEATURE_COLUMNS = [
     "cdd_population",
     "hdd_utility_gas_dev",
     "hdd_population_dev",
-    "cdd_population_dev"
+    "cdd_population_dev",
+    "hdd_utility_gas_dev_lag_1",
+    "cdd_population_dev_lag_1",
+    "holiday_week",
 ]
 
 
@@ -41,6 +44,17 @@ def build_feature_table(storage_df, weekly_dd) -> pd.DataFrame:
 
     #Add the six weather features.
     df = weather_features.add_weather(df, weekly_dd)
+        #Add last week's weather deviations.
+    df["hdd_utility_gas_dev_lag_1"] = (
+        df["hdd_utility_gas_dev"].shift(1)
+    )
+
+    df["cdd_population_dev_lag_1"] = (
+        df["cdd_population_dev"].shift(1)
+    )
+
+    #Mark major holiday weeks.
+    df = features.add_holiday_week(df)
 
     #Calculate five-year storage statistics.
     df = features.add_five_year_stats(df)
@@ -69,4 +83,7 @@ FEATURE_LABELS = {
     "hdd_utility_gas_dev": "Gas-weighted heating vs normal",
     "hdd_population_dev": "Population-weighted heating vs normal",
     "cdd_population_dev": "Population-weighted cooling vs normal",
+    "hdd_utility_gas_dev_lag_1": "Last week's gas-weighted heating deviation",
+    "cdd_population_dev_lag_1": "Last week's population-weighted cooling deviation",
+    "holiday_week": "Thanksgiving, Christmas, or New Year's week",
 }
