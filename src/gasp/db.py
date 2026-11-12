@@ -2,6 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 import pandas as pd
+from contextlib import closing
 import os
 
 DB_PATH = (
@@ -15,7 +16,7 @@ def init_db(path: str | Path = DB_PATH) -> None:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS observations (
                 series TEXT NOT NULL,
@@ -59,7 +60,7 @@ def write_series(df: pd.DataFrame, retrieved_at=None, path: str | Path = DB_PATH
 
     retrieved_at = retrieved_at.isoformat()
 
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         for row in df.itertuples(index=False):
             series_id = row.series
             period = pd.Timestamp(row.period).isoformat()
@@ -112,7 +113,7 @@ def read_series(series_id: str, as_of=None, path: str | Path = DB_PATH) -> pd.Da
         cutoff_clause = "AND retrieved_at <= ?"
         params.append(cutoff.isoformat())
 
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         query = f"""
             SELECT period, series, value
             FROM (
@@ -163,7 +164,7 @@ def write_degree_days(df: pd.DataFrame, retrieved_at=None, path: str | Path = DB
         retrieved_at = pd.Timestamp.now(tz="UTC")
     retrieved_at = _to_utc_iso(retrieved_at)
 
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         for row in df.itertuples(index=False):
             week_end = pd.Timestamp(row.week_end).isoformat()
             region = str(row.region)
@@ -230,7 +231,7 @@ def read_degree_days(
         filters.append("AND retrieved_at <= ?")
         params.append(_to_utc_iso(as_of))
 
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         query = f"""
             SELECT week_end, region, measure, weighting, value
             FROM (
