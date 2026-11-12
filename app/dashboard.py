@@ -10,6 +10,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Also add src/ so 'from gasp import ...' works where the package isn't installed (Streamlit Cloud)
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 # Configure the browser tab title and use the full-width layout across all pages
 st.set_page_config(
     page_title="GASP · Natural Gas Storage Forecast",
