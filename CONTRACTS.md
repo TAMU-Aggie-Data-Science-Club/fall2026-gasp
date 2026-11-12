@@ -196,3 +196,21 @@ Written by `live.py` each week. Read by the dashboard.
 | `storage` | float | projected working gas in storage, Bcf |
 
 Projected with SARIMAX, one week at a time: each future week uses the same ISO week's actual weather from the scenario's winter, and each projected change is added to the previous week's storage. Every scenario starts from the latest actual storage. One row per scenario per week.
+
+## 13. Explanation history
+
+Written by `explain.save_explanation_history`, run from `scoreboard.py` each week. Read by the dashboard's Explain page. Replaced in full every run, like the scoreboard (section 8), since it is recomputed from the backtest period.
+
+`explanation_history` table:
+
+| column | type | notes |
+|---|---|---|
+| `month` | int | calendar month, 1 to 12 |
+| `feature` | str | a name from `FEATURE_COLUMNS` |
+| `label` | str | the feature's plain-English name from `FEATURE_LABELS` |
+| `mean_abs_contribution` | float | Bcf; average size of this feature's contribution in that month, ignoring direction. How much it matters |
+| `mean_contribution` | float | Bcf; average contribution with direction. Negative pushes toward withdrawal, positive toward injection |
+| `start` | datetime | first target week in the range (same as the scoreboard's) |
+| `end` | datetime | last target week in the range |
+
+One row per month per feature. Sorted by `month`, then `mean_abs_contribution`, largest first.
