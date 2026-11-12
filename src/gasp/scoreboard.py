@@ -21,7 +21,7 @@ def main() -> None:
     # Keep the earlier history for training; the dates below select target weeks.
     path = db.DB_PATH
     storage = db.read_series(pipeline.LOWER_48_SERIES, path=path)
-    weekly_weather = db.read_degree_days(region="US", path=path)
+    weekly_weather = db.read_degree_days(region=None, path=path)
 
     if storage.empty or weekly_weather.empty:
         raise ValueError(

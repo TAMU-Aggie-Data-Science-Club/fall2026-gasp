@@ -175,7 +175,7 @@ def forecast(path=db.DB_PATH, refresh=True):
     )
 
     weekly_weather = db.read_degree_days(
-        region="US",
+        region=None,
         path=path,
     )
 
