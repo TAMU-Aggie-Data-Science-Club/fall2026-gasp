@@ -1,8 +1,6 @@
-
 """Generate and score live EIA natural gas storage forecasts."""
 import pandas as pd
 import sqlite3
-from gasp.explain import explain
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 from contextlib import closing
@@ -14,6 +12,7 @@ from gasp import (
     feature_table,
     weather_features,
     baselines,
+    outlook,
 )
 
 from gasp.sarimax import make_sarimax
@@ -185,6 +184,9 @@ def forecast(path=db.DB_PATH, refresh=True):
             "Storage or weather data is missing."
         )
 
+    # Rebuild the winter outlook every week (CONTRACTS.md, section 12)
+    outlook.save_outlook(outlook.build_winter_outlook(storage, weekly_weather), path=path)
+
     # Step 3: Determine the upcoming target week.
     latest_period = pd.Timestamp(storage["period"].max())
     target = latest_period + pd.Timedelta(days=7)
@@ -309,9 +311,6 @@ def forecast(path=db.DB_PATH, refresh=True):
             "high": lightgbm_high,
         },
     ])
-
-
-    print("\nLive forecast predictions:")
 
     # Explain the LightGBM forecast using the same feature table.
     explanations = explain(
