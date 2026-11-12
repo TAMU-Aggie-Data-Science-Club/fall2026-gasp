@@ -1,4 +1,5 @@
 """Refresh the saved scoreboard with python -m gasp.scoreboard."""
+from gasp.ensemble import make_ensemble
 
 from gasp import (
     baselines,
@@ -59,6 +60,25 @@ def main() -> None:
         use_fourier=True,
     )
 
+    #Create fresh models for the ensemble.
+    ensemble_sarimax, _ = make_sarimax(
+        weather=sarimax_weather,
+        columns=("hdd_utility_gas_dev", "cdd_population_dev"),
+        order=(1, 0, 0),
+        refit_every=4,
+        use_fourier=True,
+    )
+
+    ensemble_lightgbm = make_lightgbm(
+        lightgbm_features,
+        refit_every=4,
+    )
+
+    #Combine SARIMAX and LightGBM with equal weights.
+    ensemble_forecaster = make_ensemble({
+        "sarimax": ensemble_sarimax,
+        "lightgbm": ensemble_lightgbm,
+    })
     # Register all models and their prediction intervals.
     forecasters = {
         "last_change": baselines.last_change,
@@ -67,7 +87,9 @@ def main() -> None:
         "sarima": sarima.make_sarima(),
         "sarimax": sarimax_forecaster,
         "lightgbm": lightgbm_forecaster,
+        "ensemble": ensemble_forecaster,
     }
+
 
     intervals = {
         "sarimax": sarimax_interval,
