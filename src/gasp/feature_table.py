@@ -1,4 +1,3 @@
-
 import pandas as pd
 from gasp import features, weather_features
 
@@ -20,10 +19,19 @@ FEATURE_COLUMNS = [
     "hdd_utility_gas_dev_lag_1",
     "cdd_population_dev_lag_1",
     "holiday_week",
+    "hdd_div1",
+    "hdd_div1_dev",
+    "hdd_div2",
+    "hdd_div2_dev",
+    "hdd_div3",
+    "hdd_div3_dev",
+    "hdd_div7",
+    "hdd_div7_dev",
 ]
 
 
 #Combines storage and weather data into one feature table.
+#weekly_dd must include the regional rows (read it with region=None).
 def build_feature_table(storage_df, weekly_dd) -> pd.DataFrame:
 
     #Sort storage data by week.
@@ -52,6 +60,9 @@ def build_feature_table(storage_df, weekly_dd) -> pd.DataFrame:
     df["cdd_population_dev_lag_1"] = (
         df["cdd_population_dev"].shift(1)
     )
+
+    #Add regional heating weather for divisions 1, 2, 3, and 7.
+    df = weather_features.add_regional_weather(df, weekly_dd)
 
     #Mark major holiday weeks.
     df = features.add_holiday_week(df)
@@ -86,4 +97,12 @@ FEATURE_LABELS = {
     "hdd_utility_gas_dev_lag_1": "Last week's gas-weighted heating deviation",
     "cdd_population_dev_lag_1": "Last week's population-weighted cooling deviation",
     "holiday_week": "Thanksgiving, Christmas, or New Year's week",
+    "hdd_div1": "New England heating degree days",
+    "hdd_div1_dev": "New England heating vs normal",
+    "hdd_div2": "Mid-Atlantic heating degree days",
+    "hdd_div2_dev": "Mid-Atlantic heating vs normal",
+    "hdd_div3": "Great Lakes heating degree days",
+    "hdd_div3_dev": "Great Lakes heating vs normal",
+    "hdd_div7": "Texas and Oklahoma heating degree days",
+    "hdd_div7_dev": "Texas and Oklahoma heating vs normal",
 }
