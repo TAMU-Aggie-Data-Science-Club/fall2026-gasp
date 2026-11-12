@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
@@ -106,3 +107,34 @@ def add_surplus(df) -> pd.DataFrame:
 
     return result
 
+
+def add_holiday_week(df) -> pd.DataFrame:
+    result = df.copy()
+
+    #Check whether the week contains a major holiday.
+    def is_holiday_week(period):
+        end = pd.Timestamp(period).date()
+        start = end - timedelta(days=6)
+
+        for year in range(start.year, end.year + 1):
+            #Find the fourth Thursday of November.
+            november_1 = date(year, 11, 1)
+            first_thursday = november_1 + timedelta(
+                days=(3 - november_1.weekday()) % 7
+            )
+            thanksgiving = first_thursday + timedelta(weeks=3)
+
+            holidays = [
+                thanksgiving,
+                date(year, 12, 25),
+                date(year, 1, 1),
+            ]
+
+            if any(start <= holiday <= end for holiday in holidays):
+                return 1
+
+        return 0
+
+    result["holiday_week"] = result["period"].apply(is_holiday_week)
+
+    return result
