@@ -75,7 +75,7 @@ def latest_period(route: str = "natural-gas/stor/wkly") -> pd.Timestamp:
     api_key = _get_api_key()
     url = f"https://api.eia.gov/v2/{route.strip('/')}/"
 
-    response = requests.get(url, params={"api_key": api_key}, timeout=10)
+    response = requests.get(url, params={"api_key": api_key}, timeout=30)
     response.raise_for_status()
 
     end_period = response.json().get("response", {}).get('endPeriod')
