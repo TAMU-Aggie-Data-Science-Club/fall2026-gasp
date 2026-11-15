@@ -38,14 +38,9 @@ def load_scoreboard_predictions() -> pd.DataFrame:
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.20) -> str:
-    """
-    Helper function that converts a solid hex color (like '#008080') into a see-through
-    RGBA color string (like 'rgba(0, 128, 128, 0.20)'). We need this so the 90% confidence
-    band is translucent and doesn't hide the lines underneath it.
-    """
+    """Convert a solid hex color (like '#D95F02') into a see-through RGBA color for range boxes."""
     h = hex_color.lstrip("#")
     if len(h) == 6:
-        # Convert the 3 pairs of hex digits into Red, Green, and Blue numbers (0-255)
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return f"rgba({r}, {g}, {b}, {alpha})"
     return f"rgba(27, 79, 114, {alpha})"
@@ -90,23 +85,26 @@ else:
     st.dataframe(sorted_results, use_container_width=True, hide_index=True)
 
 # --- Section 2: Actual vs. Predicted Weekly Changes ---
-st.subheader("2. Actual vs. Predicted Weekly Storage Changes")
+st.subheader("2. Actual vs. Predicted Weekly Storage Changes (2025 Backtest)")
 st.markdown(
-    f"How to read this chart: The solid black line shows actual weekly {term_tip('injection', 'injections')} (+) and "
-    f"{term_tip('withdrawal', 'withdrawals')} (-) in {term_tip('Bcf')}, while dashed colored lines show each model's forecast "
-    f"(and shaded bands show {term_tip('forecast range (90%)', '90% forecast ranges')} when available).",
+    f"Each shaded box is a model's {term_tip('forecast range (90%)', '90% range')} for that week, and the dotted line "
+    f"is its forecast. The dark line with diamonds is what the EIA reported, in {term_tip('Bcf')}. Below 0 means gas "
+    f"was pulled out of storage (a {term_tip('withdrawal')}); above 0 means gas was added (an {term_tip('injection')}). "
+    f"Drag to zoom in, double-click to reset.",
     unsafe_allow_html=True,
 )
 
 if predictions_df.empty:
     render_empty_state("No saved model predictions found in the database.")
 else:
-    # Make a copy of the dataframe so we don't accidentally modify the cached table in memory,
-    # and convert the 'period' column from text strings into proper calendar dates.
+    # Copy so we don't modify the cached table, and convert 'period' into calendar dates
     pred_df = predictions_df.copy()
     pred_df["period"] = pd.to_datetime(pred_df["period"])
 
-    # Build the list of models for the dropdown menu, ordered from best MAE to worst MAE
+    # Show only the most recent backtest year
+    pred_df = pred_df[pred_df["period"].dt.year == 2025]
+
+    # Models for the picker, ordered from best MAE to worst MAE
     if not results_df.empty and "model" in results_df.columns:
         available_models = [
             m for m in results_df.sort_values("mae")["model"].tolist()
@@ -115,12 +113,11 @@ else:
     else:
         available_models = sorted(pred_df["model"].unique().tolist())
 
-    # Create the multi-select dropdown box. Default to selecting the top 2 models so the user
-    # immediately sees how two different models compare without having to click first.
+    # Start with LightGBM only; other models can be added from the picker
     selected_models = st.multiselect(
-        "Select one or more models to compare:",
+        "Models to show:",
         options=available_models,
-        default=available_models[:2] if len(available_models) >= 2 else available_models[:1],
+        default=["lightgbm"] if "lightgbm" in available_models else available_models[:1],
         format_func=format_model_name,
         help=help_text("backtest"),
     )
@@ -128,105 +125,87 @@ else:
     if not selected_models:
         st.info("Select at least one model above to compare against actual weekly changes.")
     else:
-        # Filter the predictions table down to only the rows for the models the user selected
         filtered_preds = pred_df[pred_df["model"].isin(selected_models)].copy()
 
-        # Extract one single timeline of actual storage changes. Because every model row for a given
-        # week has the same 'actual' value, drop_duplicates keeps just one row per week.
+        # One timeline of actual changes: every model row for a week has the same actual
         actual_df = (
             filtered_preds[["period", "actual"]]
             .drop_duplicates(subset=["period"])
             .sort_values("period")
         )
 
-        # Create an empty Plotly figure canvas where we will stack our bands and lines
         fig_avp = go.Figure()
+        box_width = pd.Timedelta(days=4).total_seconds() * 1000  # bar widths on a date axis are in ms
 
-        # LAYER 1: Shaded 90% confidence bands (drawn first so they sit behind the lines).
-        # We check if 'low' and 'high' columns exist and drop any rows where they are NaN
-        # (so models without intervals, like SARIMA, simply skip this step without errors).
-        if "low" in filtered_preds.columns and "high" in filtered_preds.columns:
-            for model_name in selected_models:
-                m_band = (
-                    filtered_preds[filtered_preds["model"] == model_name]
-                    .dropna(subset=["low", "high"])
-                    .sort_values("period")
-                )
-                if not m_band.empty:
-                    color_hex = get_model_color(model_name)
-                    # Plotly trick for shaded bands: First draw an invisible line (width=0) at the 'high' bound.
-                    fig_avp.add_trace(
-                        go.Scatter(
-                            x=m_band["period"],
-                            y=m_band["high"],
-                            mode="lines",
-                            line={"width": 0},
-                            showlegend=False,
-                            hoverinfo="skip",
-                        )
-                    )
-                    # Next, draw the 'low' bound line and set fill='tonexty', which tells Plotly to shade
-                    # the area between this 'low' line and the 'high' line we just drew right above it.
-                    fig_avp.add_trace(
-                        go.Scatter(
-                            x=m_band["period"],
-                            y=m_band["low"],
-                            mode="lines",
-                            line={"width": 0},
-                            fill="tonexty",
-                            fillcolor=_hex_to_rgba(color_hex, 0.22),
-                            name=f"{format_model_name(model_name)} 90% Range",
-                            hovertemplate="90% Range: %{y:.1f} to %{customdata:.1f} Bcf<extra></extra>",
-                            customdata=m_band["high"],
-                        )
-                    )
-
-        # LAYER 2: Draw the actual EIA weekly storage changes as a solid charcoal-black line
-        fig_avp.add_trace(
-            go.Scatter(
-                x=actual_df["period"],
-                y=actual_df["actual"],
-                mode="lines",
-                name="Actual Weekly Change",
-                line={"color": get_model_color("actual"), "width": 2.4},
-                hovertemplate="Actual: %{y:.1f} Bcf<extra></extra>",
-            )
-        )
-
-        # LAYER 3: Loop through each selected model and draw its predicted weekly changes as a
-        # dashed line using that model's permanent color from MODEL_COLORS.
         for model_name in selected_models:
             m_df = filtered_preds[filtered_preds["model"] == model_name].sort_values("period")
+            color = get_model_color(model_name)
+            name = format_model_name(model_name)
+
+            # Range boxes: a floating bar from low to high for each week that has a range
+            if "low" in m_df.columns and "high" in m_df.columns:
+                ranged = m_df.dropna(subset=["low", "high"])
+                if not ranged.empty:
+                    fig_avp.add_trace(
+                        go.Bar(
+                            x=ranged["period"],
+                            base=ranged["low"],
+                            y=ranged["high"] - ranged["low"],
+                            width=box_width,
+                            name=f"{name} 90% range",
+                            marker={
+                                "color": _hex_to_rgba(color, 0.18),
+                                "line": {"color": _hex_to_rgba(color, 0.6), "width": 1},
+                            },
+                            customdata=ranged[["low", "high"]].to_numpy(),
+                            hovertemplate=f"{name} range: %{{customdata[0]:.0f}} to %{{customdata[1]:.0f}} Bcf<extra></extra>",
+                        )
+                    )
+
+            # The model's forecast: dotted line with dots
             fig_avp.add_trace(
                 go.Scatter(
                     x=m_df["period"],
                     y=m_df["predicted"],
-                    mode="lines",
-                    name=format_model_name(model_name),
-                    line={"color": get_model_color(model_name), "width": 2, "dash": "dash"},
-                    hovertemplate=f"{format_model_name(model_name)}: %{{y:.1f}} Bcf<extra></extra>",
+                    mode="lines+markers",
+                    name=f"{name} forecast",
+                    line={"color": color, "width": 2, "dash": "dot"},
+                    marker={"size": 5, "color": color},
+                    hovertemplate=f"{name} forecast: %{{y:.0f}} Bcf<extra></extra>",
                 )
             )
 
-        # Collect all Y-axis values (actual, predicted, low, high) so we know the exact minimum
-        # and maximum numbers shown on the chart.
+        # What the EIA reported: solid line with diamonds
+        fig_avp.add_trace(
+            go.Scatter(
+                x=actual_df["period"],
+                y=actual_df["actual"],
+                mode="lines+markers",
+                name="Actual (EIA)",
+                line={"color": get_model_color("actual"), "width": 2.5},
+                marker={"size": 6, "symbol": "diamond", "color": get_model_color("actual")},
+                hovertemplate="Actual: %{y:.0f} Bcf<extra></extra>",
+            )
+        )
+
+        # Fit the axes to all plotted values, with room on each side for the boxes
         y_cols = [filtered_preds["actual"], filtered_preds["predicted"]]
         if "low" in filtered_preds.columns and "high" in filtered_preds.columns:
             y_cols.extend([filtered_preds["low"].dropna(), filtered_preds["high"].dropna()])
         all_y = pd.concat(y_cols, ignore_index=True).dropna()
+        pad = pd.Timedelta(days=5)
 
-        # Lock the chart's X and Y axes to the exact min/max of the data so users can box-zoom in
-        # and double-click to reset, but can never zoom out into empty space past the data.
         apply_chart_bounds(
             fig_avp,
-            x_min=filtered_preds["period"].min(),
-            x_max=filtered_preds["period"].max(),
-            x_title="Week",
-            y_title="Weekly Storage Change (Bcf)",
+            x_min=(filtered_preds["period"].min() - pad).to_pydatetime(),
+            x_max=(filtered_preds["period"].max() + pad).to_pydatetime(),
+            x_title="Week ending (Friday)",
+            y_title="Weekly storage change (Bcf)",
             y_min=float(all_y.min()) if not all_y.empty else None,
             y_max=float(all_y.max()) if not all_y.empty else None,
         )
-        fig_avp.update_layout(height=440)
+        # Boxes from different models overlap at the same week instead of sitting side by side
+        fig_avp.update_layout(height=480, barmode="overlay")
         st.plotly_chart(fig_avp, use_container_width=True)
 
 # --- Section 3: MAE by Month ---
