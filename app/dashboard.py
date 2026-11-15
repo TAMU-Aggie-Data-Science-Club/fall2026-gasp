@@ -22,6 +22,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Make the "open navigation" button obvious: a gray tile containing the arrow and a "Pages" label
+st.markdown(
+    """
+    <style>
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="collapsedControl"] button {
+        background: #E5E2DC;
+        border-radius: 14px;
+        height: 3rem;
+        width: auto;
+        padding: 0 1rem 0 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    [data-testid="stExpandSidebarButton"] svg,
+    [data-testid="stSidebarCollapsedControl"] button svg,
+    [data-testid="collapsedControl"] button svg {
+        width: 1.6rem;
+        height: 1.6rem;
+        color: #18222C;
+    }
+    [data-testid="stExpandSidebarButton"]::after,
+    [data-testid="stSidebarCollapsedControl"] button::after,
+    [data-testid="collapsedControl"] button::after {
+        content: "Pages";
+        position: static;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #18222C;
+        white-space: nowrap;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Register all 8 required pages in the exact order listed in the Piece 1 instructions.
 # Setting default=True on Home makes the app open on the Home page automatically.
 pages = [
@@ -36,5 +74,5 @@ pages = [
 ]
 
 # Build the sidebar navigation menu and run whichever page the user clicked
-nav = st.navigation(pages)
+nav = st.navigation(pages, position="top")
 nav.run()
