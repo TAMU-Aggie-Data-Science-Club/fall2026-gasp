@@ -122,7 +122,7 @@ def signed(value: float, digits: int = 0) -> str:
     return "—" if pd.isna(value) else f"{value:+.{digits}f}"
 
 
-# turn a hex color into a see-through one for the range bands
+# turn a hex color into a see-through one for the range boxes
 def rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
     r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
@@ -149,48 +149,58 @@ def week_table(g: pd.DataFrame, released: bool) -> pd.DataFrame:
     )
 
 
-# forecasts vs actuals chart, with each model's range as a shaded band
+# forecasts vs actuals: each week's 90% range as a shaded box, forecasts as a dotted line,
+# and the EIA actual as a solid line with diamonds
 def build_chart(scored: pd.DataFrame, models: list[str]) -> go.Figure:
     fig = go.Figure()
     values: list[float] = []  # every y value we plot, used to fit the axis
+    box_width = pd.Timedelta(days=4).total_seconds() * 1000  # bar widths on a date axis are in ms
 
     for model in models:
         sub = scored[scored["model"] == model].sort_values("target")
         color = get_model_color(model)
+        name = format_model_name(model)
 
-        # range band: draw the top edge, then the bottom edge filled up to it
-        if sub["low"].notna().any() and sub["high"].notna().any():
+        # range boxes: a floating bar from low to high for each week that has a range
+        ranged = sub.dropna(subset=["low", "high"])
+        if not ranged.empty:
             fig.add_trace(
-                go.Scatter(x=sub["target"], y=sub["high"], mode="lines", line={"width": 0},
-                           showlegend=False, hoverinfo="skip")
+                go.Bar(
+                    x=ranged["target"], base=ranged["low"], y=ranged["high"] - ranged["low"],
+                    width=box_width, name=f"{name} 90% range",
+                    marker={"color": rgba(color, 0.18), "line": {"color": rgba(color, 0.6), "width": 1}},
+                    customdata=ranged[["low", "high"]].to_numpy(),
+                    hovertemplate=f"{name} range: %{{customdata[0]:.0f}} to %{{customdata[1]:.0f}} Bcf<extra></extra>",
+                )
             )
-            fig.add_trace(
-                go.Scatter(x=sub["target"], y=sub["low"], mode="lines", line={"width": 0},
-                           fill="tonexty", fillcolor=rgba(color, 0.15),
-                           showlegend=False, hoverinfo="skip")
-            )
-            values += sub["low"].dropna().tolist() + sub["high"].dropna().tolist()
+            values += ranged["low"].tolist() + ranged["high"].tolist()
 
-        # the model's forecast line
+        # the model's forecast: dotted line with markers
         fig.add_trace(
-            go.Scatter(x=sub["target"], y=sub["predicted"], mode="lines+markers",
-                       name=format_model_name(model), line={"color": color, "width": 2},
-                       marker={"size": 7})
+            go.Scatter(
+                x=sub["target"], y=sub["predicted"], mode="lines+markers", name=f"{name} forecast",
+                line={"color": color, "width": 2, "dash": "dot"},
+                marker={"size": 9, "color": color},
+                hovertemplate=f"{name} forecast: %{{y:.0f}} Bcf<extra></extra>",
+            )
         )
         values += sub["predicted"].tolist()
 
-    # the actual EIA numbers (only for weeks that have one)
+    # the actual EIA numbers (only for weeks that have one): solid line with diamonds
     actual = scored.dropna(subset=["actual"]).groupby("target", as_index=False)["actual"].first()
     if not actual.empty:
         fig.add_trace(
-            go.Scatter(x=actual["target"], y=actual["actual"], mode="lines+markers",
-                       name="Actual (EIA)", line={"color": MODEL_COLORS["actual"], "width": 3},
-                       marker={"size": 9, "symbol": "diamond"})
+            go.Scatter(
+                x=actual["target"], y=actual["actual"], mode="lines+markers", name="Actual (EIA)",
+                line={"color": MODEL_COLORS["actual"], "width": 3},
+                marker={"size": 11, "symbol": "diamond", "color": MODEL_COLORS["actual"]},
+                hovertemplate="Actual: %{y:.0f} Bcf<extra></extra>",
+            )
         )
         values += actual["actual"].tolist()
 
-    # fit the axes to the data each time the page loads, with a few days of room on each side
-    pad = pd.Timedelta(days=3.5)
+    # fit the axes to the data each time the page loads, with room on each side for the boxes
+    pad = pd.Timedelta(days=5)
     x_min = (scored["target"].min() - pad).to_pydatetime()
     x_max = (scored["target"].max() + pad).to_pydatetime()
     fig = apply_chart_bounds(
@@ -199,6 +209,9 @@ def build_chart(scored: pd.DataFrame, models: list[str]) -> go.Figure:
         y_title="Weekly storage change (Bcf; below 0 = withdrawal)",
         y_min=min(values), y_max=max(values),
     )
+
+    # boxes from different models overlap at the same week instead of sitting side by side
+    fig.update_layout(barmode="overlay")
 
     # one tick per forecast week
     fig.update_xaxes(tickmode="array", tickvals=sorted(scored["target"].unique()), tickformat="%b %d")
@@ -274,21 +287,22 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-    # chart: pick which models to show (best three to start)
+    # chart: LightGBM to start; other models can be added from the picker
     st.subheader("Forecasts vs actuals")
     all_models = sorted(scored["model"].unique())
     ranked = list(summary["model"]) if not summary.empty else all_models
     chosen = st.multiselect(
-        "Models to show", all_models, default=ranked[:3], format_func=format_model_name
+        "Models to show", all_models,
+        default=["lightgbm"] if "lightgbm" in all_models else ranked[:1],
+        format_func=format_model_name,
     )
     if chosen:
         st.plotly_chart(build_chart(scored, chosen))
         st.markdown(
-            "How to read this: each colored line is a model's forecast for a week, and the shaded band "
-            f"around it is its {term_tip('forecast range (90%)', '90% range')}. The dark line is what the EIA "
-            f"reported, in {term_tip('Bcf')}. Below 0 means gas was pulled out of storage "
-            f"(a {term_tip('withdrawal')}); above 0 means gas was added (an {term_tip('injection')}). "
-            "Drag to zoom in, double-click to reset.",
+            f"Each shaded box is a model's {term_tip('forecast range (90%)', '90% range')} for that week, "
+            f"and the dotted line is its forecast. The dark line with diamonds is what the EIA reported, in {term_tip('Bcf')}. "
+            f"Below 0 means gas was pulled out of storage (a {term_tip('withdrawal')}); above 0 means gas was added "
+            f"(an {term_tip('injection')}). Drag to zoom in, double-click to reset.",
             unsafe_allow_html=True,
         )
     else:
