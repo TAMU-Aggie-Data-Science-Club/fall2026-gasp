@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 23 * * 3"   
-    - cron: "0 17 * * 4" 
+    - cron: "0 21 * * 0"   # Sun 3 PM CT: forecast (published on the site at 5:30 PM CT)
+    - cron: "0 13 * * 1"   # Mon 8 AM ET: backup forecast
+    - cron: "0 17 * * 4"   # Thu noon ET: score
+    - cron: "0 21 * * 4"   # Thu 4 PM ET: backup score
   workflow_dispatch:
     inputs:
       job:
@@ -43,7 +45,7 @@ jobs:
           git push origin live
 
   forecast:
-    if: (github.event_name == 'schedule' && github.event.schedule == '0 23 * * 3') || (github.event_name == 'workflow_dispatch' && inputs.job == 'forecast')
+    if: (github.event_name == 'schedule' && (github.event.schedule == '0 21 * * 0' || github.event.schedule == '0 13 * * 1')) || (github.event_name == 'workflow_dispatch' && inputs.job == 'forecast')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +76,7 @@ jobs:
           git push origin live
 
   score:
-    if: (github.event_name == 'schedule' && github.event.schedule == '0 17 * * 4') || (github.event_name == 'workflow_dispatch' && inputs.job == 'score')
+    if: (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 4' || github.event.schedule == '0 21 * * 4')) || (github.event_name == 'workflow_dispatch' && inputs.job == 'score')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
