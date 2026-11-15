@@ -286,5 +286,11 @@ def render_home(path: str | Path = db.DB_PATH) -> None:
     if forecast_visible:
         render_side_by_side(latest_rows, results_df, latest_target)
 
+    st.markdown("#### Explore")
+    st.page_link("pages/track_record.py", label="See how our live forecasts did", icon=":material/insights:")
+    st.page_link("pages/models.py", label="Compare our models", icon=":material/bar_chart:")
+    st.page_link("pages/explain.py", label="Why we expect this week's number", icon=":material/lightbulb:")
+    st.page_link("pages/winter_outlook.py", label="Where storage could end the winter", icon=":material/ac_unit:")
+
 
 render_home()
