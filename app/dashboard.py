@@ -22,6 +22,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from app.components import inject_term_tip_css
+
+# Load the tooltip styles once, so every page's terms get the pop-up definitions
+inject_term_tip_css()
+
 # Make the "open navigation" button obvious: a gray tile containing the arrow and a "Pages" label
 st.markdown(
     """
