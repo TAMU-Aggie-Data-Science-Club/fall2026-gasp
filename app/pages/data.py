@@ -79,7 +79,7 @@ else:
     #Section 1: Storage vs. Five-Year Range
     st.subheader("1. Lower 48 Storage vs. Five-Year Historical Range")
     st.markdown(
-        f"How to read this chart: The solid navy line tracks actual {term_tip('working gas in storage')} ({term_tip('Bcf')}), "
+        f"The solid navy line tracks actual {term_tip('working gas in storage')} ({term_tip('Bcf')}), "
         f"the dashed orange line shows the {term_tip('five-year average and five-year range', 'five-year average')}, and the shaded gray band shows the 5-year min-to-max range.",
         unsafe_allow_html=True,
     )
@@ -177,7 +177,7 @@ else:
     #Section 2: Recent Weekly Change
     st.subheader("2. Weekly Storage Change vs. Five-Year Average")
     st.markdown(
-        f"How to read this chart: Positive values represent net storage {term_tip('injection', 'injections')} (+{term_tip('Bcf')}) "
+        f"Positive values represent net storage {term_tip('injection', 'injections')} (+{term_tip('Bcf')}) "
         f"and negative values represent net {term_tip('withdrawal', 'withdrawals')} (-{term_tip('Bcf')}) compared against the 5-year average change for the same week.",
         unsafe_allow_html=True,
     )
@@ -243,7 +243,7 @@ else:
     with col2:
         st.metric("Newest Stored Weather Week", weather_date_str or "No weather data")
 
-    st.markdown("How to read this table: Each row records an automated data fetch run, how many new rows were stored, and whether validation succeeded.")
+    st.markdown("Each row records an automated data fetch run, how many new rows were stored, and whether validation succeeded.")
     if runs_df.empty:
         st.info("No pipeline runs logged yet.")
     else:
