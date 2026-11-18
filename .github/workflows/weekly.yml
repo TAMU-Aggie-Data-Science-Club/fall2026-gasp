@@ -33,7 +33,7 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.job == 'merge')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: live
           fetch-depth: 0
@@ -48,7 +48,7 @@ jobs:
     if: (github.event_name == 'schedule' && (github.event.schedule == '0 21 * * 0' || github.event.schedule == '0 13 * * 1')) || (github.event_name == 'workflow_dispatch' && inputs.job == 'forecast')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: live
           fetch-depth: 0
@@ -57,7 +57,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git merge origin/main --no-edit
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -79,7 +79,7 @@ jobs:
     if: (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 4' || github.event.schedule == '0 21 * * 4')) || (github.event_name == 'workflow_dispatch' && inputs.job == 'score')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: live
           fetch-depth: 0
