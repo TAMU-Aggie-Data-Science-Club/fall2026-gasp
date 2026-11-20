@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-import os
-import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Only import db at the top level.Keeps `live` and `explain` inside functions
-# below so Python doesn't try to load LightGBM/libomp on macOS just to render UI charts.
-from gasp import db
 from app.components import (
     apply_chart_bounds,
     format_bcf_change,
+    is_published,
     render_empty_state,
     term_tip,
 )
@@ -28,99 +24,39 @@ MONTH_NAMES = [
 ]
 
 
-def _active_db_path() -> str:
-    """Return GASP_DB_PATH if set in the terminal (e.g., data/deploy_copy.db), else default db.DB_PATH."""
-    return os.environ.get("GASP_DB_PATH") or str(db.DB_PATH)
-
-
 def load_latest_explanations() -> pd.DataFrame:
-    """
-    Loads the live_explanations table.
-    Tries live.load_explanations() first, then falls back to reading SQLite directly
-    so macOS environments without libomp still display the live forecast breakdown.
-    """
-    active_path = _active_db_path()
+    """Load the saved live explanations (CONTRACTS.md, section 10), or an empty table."""
     try:
         from gasp import live
 
-        if hasattr(live, "load_explanations"):
-            df = live.load_explanations(path=active_path)
-            if not df.empty:
-                return df
-    except TypeError:
-        try:
-            from gasp import live
-
-            df = live.load_explanations()
-            if not df.empty:
-                return df
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    try:
-        with sqlite3.connect(active_path) as conn:
-            return pd.read_sql_query("SELECT * FROM live_explanations", conn)
+        return live.load_explanations()
     except Exception:
         return pd.DataFrame()
 
 
 def load_seasonal_history() -> pd.DataFrame:
-    """
-    Loads the explanation_history table.
-    Team B's Piece 2 adds explain.load_explanation_history(). Until that merges,
-    we also check SQLite directly and return an empty DataFrame if absent so the page
-    renders a friendly empty state instead of an error.
-    """
-    active_path = _active_db_path()
+    """Load the saved explanation history (CONTRACTS.md, section 13), or an empty table."""
     try:
         from gasp import explain
 
-        if hasattr(explain, "load_explanation_history"):
-            df = explain.load_explanation_history(path=active_path)
-            if not df.empty:
-                return df
-    except TypeError:
-        try:
-            from gasp import explain
-
-            df = explain.load_explanation_history()
-            if not df.empty:
-                return df
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    try:
-        with sqlite3.connect(active_path) as conn:
-            return pd.read_sql_query("SELECT * FROM explanation_history", conn)
+        return explain.load_explanation_history()
     except Exception:
         return pd.DataFrame()
 
 
-def build_top_reason_sentence(top_row: pd.Series, final_forecast: float) -> str:
-    """Write a plain-English headline sentence naming the single biggest driver of this week's forecast."""
+def build_top_reason_sentence(top_row: pd.Series) -> str:
+    """Name the single biggest driver of this week's forecast and which way it pushed."""
     label = str(top_row["label"])
     contrib = float(top_row["contribution"])
-    overall_dir = "withdrawal" if final_forecast < 0 else "injection"
-    push_dir = "withdrawal" if contrib < 0 else "injection"
+    direction = "withdrawal" if contrib < 0 else "injection"
 
     # Keeps acronyms (like HDD, CDD, EIA) uppercase while formatting normal labels cleanly
     if len(label) > 1 and not label[:2].isupper():
-        clean_label = label[0].upper() + label[1:]
-    else:
-        clean_label = label
+        label = label[0].upper() + label[1:]
 
-    if push_dir == overall_dir:
-        return (
-            f"**{clean_label}** ({contrib:+.1f} Bcf) is the biggest reason "
-            f"we expect a **{overall_dir}** this week."
-        )
     return (
-        f"**{clean_label}** ({contrib:+.1f} Bcf toward {push_dir}) is the single largest "
-        f"adjustment in this week's **{overall_dir}** forecast."
+        f"**{label}** pushed this week's forecast **{abs(contrib):.1f} Bcf toward {direction}**, "
+        f"the biggest single factor."
     )
 
 
@@ -131,25 +67,24 @@ with st.spinner("Loading forecast feature breakdowns..."):
     history_df = load_seasonal_history()
 
 
-
 # PART 1: THIS WEEK'S LIVE FORECAST BREAKDOWN
 
 st.subheader("1. This Week's Live Forecast, Broken Down")
 
-if exp_df.empty:
-    render_empty_state(
-        "No live forecast breakdown is stored in this database yet. "
-        "(Run with GASP_DB_PATH=data/deploy_copy.db to view the live deployed forecast.)"
-    )
-else:
+# Only weeks whose forecast is already shown on the site (Sunday 5:30 PM Central)
+if not exp_df.empty:
     exp_df = exp_df.copy()
     exp_df["target"] = pd.to_datetime(exp_df["target"])
+    exp_df = exp_df[exp_df["target"].apply(is_published)]
 
-    # Filters to the most recent target Friday in live_explanations
+if exp_df.empty:
+    render_empty_state("The breakdown appears here once the first live forecast is published.")
+else:
+    # Filters to the most recent published target Friday
     latest_target = exp_df["target"].max()
     week_df = exp_df[exp_df["target"] == latest_target].copy()
 
-    # Verifys how the pieces add up: base_value ("an average week") + all contributions = LightGBM's forecast
+    # How the pieces add up: base_value ("an average week") + all contributions = LightGBM's forecast
     base_val = float(week_df["base_value"].iloc[0])
     total_contrib = float(week_df["contribution"].sum())
     lightgbm_forecast = base_val + total_contrib
@@ -159,7 +94,7 @@ else:
     top8_df = week_df.sort_values("abs_contrib", ascending=False).head(8).copy()
 
     # Simple sentence above the chart naming the biggest driver
-    st.markdown(build_top_reason_sentence(top8_df.iloc[0], lightgbm_forecast))
+    st.markdown(build_top_reason_sentence(top8_df.iloc[0]))
 
     # Shows exact arithmetic so anyone can verify base_value + contributions = LightGBM forecast
     st.markdown(
@@ -171,7 +106,7 @@ else:
         unsafe_allow_html=True,
     )
 
-    # One-sentence chart explanation without a "How to read this:" prefix
+    # One-sentence chart explanation
     st.markdown(
         f"Each bar shows how many {term_tip('Bcf')} one input pushed this week's forecast "
         f"toward a {term_tip('withdrawal')} (left, orange) or toward an {term_tip('injection')} (right, navy).",
@@ -244,15 +179,12 @@ else:
     st.plotly_chart(fig_week, use_container_width=True)
 
 
-
 # PART 2: WHAT DRIVES THE FORECAST BY SEASON
 
 st.subheader("2. What Drives the Forecast by Season")
 
 if history_df.empty:
-    render_empty_state(
-        "Seasonal driver history will appear here once Team B's historical explanation table merges."
-    )
+    render_empty_state("Seasonal driver history will appear here after the next scoreboard run.")
 else:
     history_df = history_df.copy()
 
