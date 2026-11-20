@@ -141,6 +141,58 @@ def _predict_range(low_model, high_model, rows: pd.DataFrame, feature_columns: l
     return np.minimum(a, b), np.maximum(a, b)
 
 
+def fit_interval_models(
+    feature_table: pd.DataFrame,
+    target,
+    feature_columns=FEATURE_COLUMNS,
+    params=None,
+    calibrate: bool = True,
+):
+    """Train the 5%/95% quantile pair for target, using only rows before it.
+
+    Returns ((low_model, high_model), q). With calibrate=False, q is 0.
+    Shared by make_lightgbm_interval and whatif.lightgbm_whatif so both train
+    exactly the same way.
+    """
+    target = pd.Timestamp(target)
+    feature_columns = list(feature_columns)
+    train = feature_table[
+        (feature_table["period"] < target) & feature_table[TARGET_COLUMN].notna()
+    ].sort_values("period")
+
+    if not calibrate:
+        if train.empty:
+            raise ValueError(f"No training rows before {target:%Y-%m-%d}")
+        return _fit_quantile_pair(train, feature_columns, params), 0.0
+
+    if len(train) <= CALIBRATION_WEEKS:
+        raise ValueError(
+            f"Need more than {CALIBRATION_WEEKS} training weeks before "
+            f"{target:%Y-%m-%d} to calibrate"
+        )
+    proper = train.iloc[:-CALIBRATION_WEEKS]
+    held_out = train.iloc[-CALIBRATION_WEEKS:]
+
+    models = _fit_quantile_pair(proper, feature_columns, params)
+    low, high = _predict_range(*models, held_out, feature_columns)
+    actual = held_out[TARGET_COLUMN].to_numpy(dtype=float)
+
+    # Negative when the actual is inside the range, positive when it's outside
+    scores = np.maximum(low - actual, actual - high)
+    q = float(np.quantile(scores, CALIBRATION_LEVEL))
+    return models, q
+
+
+def finish_range(raw_low: float, raw_high: float, q: float, point: float) -> tuple[float, float]:
+    """Apply the calibration shift q, then make sure the range contains point (section 7)."""
+    low = float(raw_low) - q
+    high = float(raw_high) + q
+    if low > high:
+        # A negative q can narrow past the middle; collapse to the midpoint
+        low = high = (low + high) / 2
+    return min(low, float(point)), max(high, float(point))
+
+
 def make_lightgbm_interval(
     feature_table: pd.DataFrame,
     feature_columns=FEATURE_COLUMNS,
@@ -176,32 +228,6 @@ def make_lightgbm_interval(
 
     state = {"models": None, "q": 0.0, "fit_target": None, "calls": 0}
 
-    def fit(target: pd.Timestamp):
-        """Train the quantile pair (and calibrate it) using only rows before target."""
-        train = table[(table["period"] < target) & table[TARGET_COLUMN].notna()]
-
-        if not calibrate:
-            if train.empty:
-                raise ValueError(f"No training rows before {target:%Y-%m-%d}")
-            return _fit_quantile_pair(train, feature_columns, params), 0.0
-
-        if len(train) <= CALIBRATION_WEEKS:
-            raise ValueError(
-                f"Need more than {CALIBRATION_WEEKS} training weeks before "
-                f"{target:%Y-%m-%d} to calibrate"
-            )
-        proper = train.iloc[:-CALIBRATION_WEEKS]
-        held_out = train.iloc[-CALIBRATION_WEEKS:]
-
-        models = _fit_quantile_pair(proper, feature_columns, params)
-        low, high = _predict_range(*models, held_out, feature_columns)
-        actual = held_out[TARGET_COLUMN].to_numpy(dtype=float)
-
-        # Negative when the actual is inside the range, positive when it's outside
-        scores = np.maximum(low - actual, actual - high)
-        q = float(np.quantile(scores, CALIBRATION_LEVEL))
-        return models, q
-
     def forecast_interval(history: pd.DataFrame, target: pd.Timestamp) -> tuple[float, float]:
         target = pd.Timestamp(target)
 
@@ -216,21 +242,16 @@ def make_lightgbm_interval(
             or target < state["fit_target"]
         )
         if needs_fit:
-            state["models"], state["q"] = fit(target)
+            state["models"], state["q"] = fit_interval_models(
+                table, target, feature_columns, params, calibrate
+            )
             state["fit_target"] = target
             state["calls"] = 0
         state["calls"] += 1
 
         low, high = _predict_range(*state["models"], row, feature_columns)
-        low = float(low[0]) - state["q"]
-        high = float(high[0]) + state["q"]
-        if low > high:
-            # A negative q can narrow past the middle; collapse to the midpoint
-            low = high = (low + high) / 2
-
-        # Section 7: low <= forecast <= high every week
         point = point_forecast(history, target)
-        return min(low, point), max(high, point)
+        return finish_range(low[0], high[0], state["q"], point)
 
     return forecast_interval
 
