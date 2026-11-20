@@ -108,19 +108,6 @@ def main() -> None:
         intervals=intervals,
         path=path,
     )
-    print(f"Saved the 2021-2025 scoreboard to {path}")
-    print(evaluate.load_results(path=path).to_string(index=False))
-
-
-    # Saving performs one backtest per model and writes both scoreboard tables.
-    evaluate.save_scoreboard(
-        storage_with_weather,
-        forecasters,
-        start="2021-01-01",
-        end="2025-12-31",
-        intervals=intervals,
-        path=path,
-    )
 
     # Save monthly LightGBM explanations for 2021-2025.
     history = explain.explain_history(
