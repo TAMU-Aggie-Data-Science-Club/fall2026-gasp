@@ -2,7 +2,11 @@
 
 """Explain LightGBM predictions using feature contributions."""
 
+import sqlite3
+from gasp import db
+
 import pandas as pd
+
 
 from gasp.feature_table import FEATURE_COLUMNS, FEATURE_LABELS
 from gasp.lightgbm_model import train_lightgbm
@@ -68,6 +72,7 @@ def explain(
     ).reset_index(drop=True)
 
 
+
 def explain_history(
     feature_table,
     start,
@@ -75,7 +80,7 @@ def explain_history(
     feature_columns=FEATURE_COLUMNS,
     params=None,
 ) -> pd.DataFrame:
-    """Calculate average feature contributions by calendar month."""
+    """Calculate average feature contributions by month."""
 
     table = feature_table.copy()
     table["period"] = pd.to_datetime(table["period"])
@@ -103,27 +108,28 @@ def explain_history(
                 "month": target.month,
                 "feature": row["feature"],
                 "label": row["label"],
+                "contribution": row["contribution"],
                 "abs_contribution": abs(row["contribution"]),
             })
 
     if not records:
-        raise ValueError(
-            "No target weeks found in the requested range"
-        )
+        raise ValueError("No target weeks found")
 
     result = pd.DataFrame(records)
 
-    # Find the average absolute contribution
-    # for each feature in each month.
-    result = (
+    return (
         result.groupby(
             ["month", "feature", "label"],
             as_index=False,
-        )["abs_contribution"]
-        .mean()
-        .rename(columns={
-            "abs_contribution": "mean_abs_contribution"
-        })
+        )
+        .agg(
+            mean_abs_contribution=(
+                "abs_contribution", "mean"
+            ),
+            mean_contribution=(
+                "contribution", "mean"
+            ),
+        )
         .sort_values(
             ["month", "mean_abs_contribution"],
             ascending=[True, False],
@@ -131,4 +137,98 @@ def explain_history(
         .reset_index(drop=True)
     )
 
-    return result
+
+HISTORY_COLUMNS = [
+    "month",
+    "feature",
+    "label",
+    "mean_abs_contribution",
+    "mean_contribution",
+    "start",
+    "end",
+]
+
+
+def save_explanation_history(
+    history,
+    start,
+    end,
+    path=db.DB_PATH,
+):
+    """Replace the saved explanation history table."""
+
+    result = history.copy()
+
+    required = HISTORY_COLUMNS[:-2]
+    missing = [c for c in required if c not in result.columns]
+
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+
+    result["start"] = pd.Timestamp(start)
+    result["end"] = pd.Timestamp(end)
+
+    result = (
+        result[HISTORY_COLUMNS]
+        .sort_values(
+            ["month", "mean_abs_contribution"],
+            ascending=[True, False],
+        )
+        .reset_index(drop=True)
+    )
+
+    with sqlite3.connect(path) as conn:
+        result.to_sql(
+            "explanation_history",
+            conn,
+            if_exists="replace",
+            index=False,
+        )
+
+
+def load_explanation_history(path=db.DB_PATH) -> pd.DataFrame:
+    """Load explanation history, or return an empty table."""
+
+    empty = pd.DataFrame({
+        "month": pd.Series(dtype="int64"),
+        "feature": pd.Series(dtype="str"),
+        "label": pd.Series(dtype="str"),
+        "mean_abs_contribution": pd.Series(dtype="float64"),
+        "mean_contribution": pd.Series(dtype="float64"),
+        "start": pd.Series(dtype="datetime64[ns]"),
+        "end": pd.Series(dtype="datetime64[ns]"),
+    })
+
+    # Do not create a database just to read from it.
+    from pathlib import Path
+
+    if not Path(path).is_file():
+        return empty
+
+    with sqlite3.connect(path) as conn:
+        exists = conn.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'explanation_history'
+            """
+        ).fetchone()
+
+        if exists is None:
+            return empty
+
+        result = pd.read_sql_query(
+            "SELECT * FROM explanation_history",
+            conn,
+            parse_dates=["start", "end"],
+        )
+
+    return (
+        result[HISTORY_COLUMNS]
+        .sort_values(
+            ["month", "mean_abs_contribution"],
+            ascending=[True, False],
+        )
+        .reset_index(drop=True)
+    )
+
