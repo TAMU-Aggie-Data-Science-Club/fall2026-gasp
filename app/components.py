@@ -1,5 +1,7 @@
 # Allow modern type hints to work on Python 3.9+
 from __future__ import annotations
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 import html
 import re
@@ -228,3 +230,12 @@ def apply_chart_bounds(
         hovermode="x unified",
     )
     return fig
+
+# Forecasts appear on the site from the Sunday after their week ends, 5:30 PM Central
+PUBLISH_TZ = ZoneInfo("America/Chicago")
+
+
+def is_published(target) -> bool:
+    """True once a target week's forecast may be shown on the site."""
+    day = (pd.Timestamp(target) + pd.Timedelta(days=2)).date()
+    return datetime.now(PUBLISH_TZ) >= datetime.combine(day, time(17, 30), tzinfo=PUBLISH_TZ)

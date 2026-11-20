@@ -1,4 +1,7 @@
 """Refresh the saved scoreboard with python -m gasp.scoreboard."""
+
+from gasp import explain
+
 from gasp.ensemble import make_ensemble
 
 from gasp import (
@@ -105,6 +108,21 @@ def main() -> None:
         intervals=intervals,
         path=path,
     )
+
+    # Save monthly LightGBM explanations for 2021-2025.
+    history = explain.explain_history(
+        lightgbm_features,
+        start="2021-01-01",
+        end="2025-12-31",
+    )
+
+    explain.save_explanation_history(
+        history,
+        start="2021-01-01",
+        end="2025-12-31",
+        path=path,
+    )
+
     print(f"Saved the 2021-2025 scoreboard to {path}")
     print(evaluate.load_results(path=path).to_string(index=False))
 
