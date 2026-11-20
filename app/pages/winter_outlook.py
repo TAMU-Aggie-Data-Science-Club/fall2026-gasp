@@ -1,12 +1,9 @@
 from __future__ import annotations
-import os
-import sqlite3
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Only import db and features at the top level. We keep `outlook` inside try/except
-# blocks below because src/gasp/outlook.py uses Python 3.10+
 from gasp import db, features
 from gasp.pipeline import LOWER_48_SERIES
 from app.components import (
@@ -16,87 +13,36 @@ from app.components import (
 )
 
 
-def _active_db_path() -> str:
-    """Returns GASP_DB_PATH if set in the terminal, else default db.DB_PATH."""
-    return os.environ.get("GASP_DB_PATH") or str(db.DB_PATH)
-
-
 def format_winter_name(scenario_year: int) -> str:
-    """
-    Formats a scenario integer like 2001 into its winter season label '2000–01'.
-    """
+    """Formats a scenario integer like 2001 into its winter season label '2000–01'."""
     yr = int(scenario_year)
     return f"{yr - 1}–{yr % 100:02d}"
 
 
 def load_winter_outlook_df() -> pd.DataFrame:
-    """
-    Loads the winter_outlook table from the active database.
-    Tries outlook.load_outlook() first, then falls back to reading SQLite directly.
-    """
-    active_path = _active_db_path()
+    """Load the saved winter outlook (CONTRACTS.md, section 12), or an empty table."""
     try:
         from gasp import outlook
 
-        df = outlook.load_outlook(path=active_path)
-        if not df.empty:
-            return df
-    except TypeError:
-        try:
-            from gasp import outlook
-
-            df = outlook.load_outlook()
-            if not df.empty:
-                return df
-        except Exception:
-            pass
-    except Exception:
-        pass
-
-    try:
-        with sqlite3.connect(active_path) as conn:
-            return pd.read_sql_query("SELECT * FROM winter_outlook", conn)
+        return outlook.load_outlook()
     except Exception:
         return pd.DataFrame()
 
 
-def summarize_winter_outlook(outlook_df: pd.DataFrame) -> dict | str:
-    """
-    Gets summary stats from outlook.summarize_outlook() when supported, or compute the
-    exact end-of-March median, coldest winter, and warmest winter directly from outlook_df.
-    """
-    try:
-        from gasp import outlook
-
-        return outlook.summarize_outlook(outlook_df)
-    except Exception:
-        return {}
-
-
 def get_five_year_march_end_level() -> float | None:
     """
-    Computes the historical five-year average working gas storage level at the end of March
-    so we can place a reference marker on the final March date of the fan chart.
+    The historical five-year average storage level at the end of March, for a reference
+    marker on the final March date of the fan chart.
     """
-    active_path = _active_db_path()
     try:
-        storage_df = db.read_series(LOWER_48_SERIES, path=active_path)
-    except TypeError:
-        try:
-            storage_df = db.read_series(LOWER_48_SERIES)
-        except Exception:
-            return None
-    except Exception:
-        return None
-
-    try:
+        storage_df = db.read_series(LOWER_48_SERIES)
         if storage_df.empty:
             return None
         storage_df = storage_df.sort_values("period").reset_index(drop=True)
         stats_df = features.add_five_year_stats(storage_df)
         stats_df["period"] = pd.to_datetime(stats_df["period"])
 
-        # Looks at historical late-March weeks (March 24–31) to get the end-of-March 5-year mean
+        # Late-March weeks (March 24–31) give the end-of-March 5-year mean
         late_march = stats_df[
             (stats_df["period"].dt.month == 3) & (stats_df["period"].dt.day >= 24)
         ].dropna(subset=["five_year_mean"])
@@ -114,26 +60,13 @@ with st.spinner("Loading 26-winter replay scenarios..."):
     outlook_df = load_winter_outlook_df()
 
 if outlook_df.empty:
-    render_empty_state(
-        "No winter outlook scenarios are stored in this database yet. "
-        "(Run with GASP_DB_PATH=data/deploy_copy.db to view the live deployed outlook.)"
-    )
+    render_empty_state("The winter outlook appears here after the next weekly forecast run.")
 else:
     outlook_df = outlook_df.copy()
     outlook_df["period"] = pd.to_datetime(outlook_df["period"])
     outlook_df = outlook_df.sort_values(["scenario", "period"]).reset_index(drop=True)
 
-    summary = summarize_winter_outlook(outlook_df)
-    if isinstance(summary, pd.DataFrame) and not summary.empty:
-        sum_info = summary.iloc[0].to_dict()
-    elif isinstance(summary, pd.Series):
-        sum_info = summary.to_dict()
-    elif isinstance(summary, dict):
-        sum_info = summary
-    else:
-        sum_info = {}
-
-    # Computes the weekly 10th percentile, median, and 90th percentile across all 26 replayed winters
+    # Weekly 10th percentile, median, and 90th percentile across all replayed winters
     weekly_stats = (
         outlook_df.groupby("period", as_index=False)["storage"]
         .agg(
@@ -144,61 +77,51 @@ else:
         .sort_values("period")
     )
 
-    # Identify's the final end-of-March week to find the coldest (lowest storage)
-    # and warmest (highest storage) replayed winters
+    # The final end-of-March week: coldest winter = lowest storage, warmest = highest
     final_period = outlook_df["period"].max()
     end_rows = outlook_df[outlook_df["period"] == final_period].sort_values("storage")
 
-    coldest_scenario = int(sum_info.get("coldest_scenario", end_rows.iloc[0]["scenario"]))
-    coldest_storage = float(
-        sum_info.get("coldest_storage", sum_info.get("min_storage", end_rows.iloc[0]["storage"]))
-    )
-    warmest_scenario = int(sum_info.get("warmest_scenario", end_rows.iloc[-1]["scenario"]))
-    warmest_storage = float(
-        sum_info.get("warmest_storage", sum_info.get("max_storage", end_rows.iloc[-1]["storage"]))
-    )
-    median_end_storage = float(sum_info.get("median_storage", weekly_stats.iloc[-1]["median"]))
+    coldest_scenario = int(end_rows.iloc[0]["scenario"])
+    coldest_storage = float(end_rows.iloc[0]["storage"])
+    warmest_scenario = int(end_rows.iloc[-1]["scenario"])
+    warmest_storage = float(end_rows.iloc[-1]["storage"])
+    median_end_storage = float(weekly_stats.iloc[-1]["median"])
 
-    coldest_label = str(sum_info.get("coldest_label", format_winter_name(coldest_scenario)))
-    warmest_label = str(sum_info.get("warmest_label", format_winter_name(warmest_scenario)))
+    coldest_label = format_winter_name(coldest_scenario)
+    warmest_label = format_winter_name(warmest_scenario)
+    n_winters = outlook_df["scenario"].nunique()
 
     # Simple 5-second headline summary sentence
-    if isinstance(summary, str) and summary.strip():
-        st.markdown(f"**{summary}**")
-    elif "summary" in sum_info and isinstance(sum_info["summary"], str):
-        st.markdown(f"**{sum_info['summary']}**")
-    else:
-        st.markdown(
-            f"**In a typical winter, storage ends March near {round(median_end_storage / 10) * 10:,.0f} {term_tip('Bcf')}; "
-            f"in a cold winter like {coldest_label}, near {round(coldest_storage / 10) * 10:,.0f} {term_tip('Bcf')} "
-            f"(and in a mild winter like {warmest_label}, near {round(warmest_storage / 10) * 10:,.0f} {term_tip('Bcf')}).**",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f"**In a typical winter, storage ends March near {round(median_end_storage / 10) * 10:,.0f} {term_tip('Bcf')}; "
+        f"in a cold winter like {coldest_label}, near {round(coldest_storage / 10) * 10:,.0f} {term_tip('Bcf')} "
+        f"(and in a mild winter like {warmest_label}, near {round(warmest_storage / 10) * 10:,.0f} {term_tip('Bcf')}).**",
+        unsafe_allow_html=True,
+    )
 
     # One-sentence explanation directly above the fan chart
     st.markdown(
-        f"Each thin gray line replays actual weekly weather from one of the past 26 winters (2000–2026) "
+        f"Each thin gray line replays actual weekly weather from one of the past {n_winters} winters (2000–2026) "
         f"through our {term_tip('SARIMAX')} model starting from current {term_tip('working gas in storage')}.",
         unsafe_allow_html=True,
     )
 
     fig_fan = go.Figure()
 
-    # LAYER 1: Every scenario as a thin gray line
+    # LAYER 1: Every scenario as a thin gray line (no hover, so the hover box stays readable)
     scenarios = sorted(outlook_df["scenario"].unique())
     first_gray = True
     for scen in scenarios:
         s_df = outlook_df[outlook_df["scenario"] == scen]
-        w_name = format_winter_name(int(scen))
         fig_fan.add_trace(
             go.Scatter(
                 x=s_df["period"],
                 y=s_df["storage"],
                 mode="lines",
                 line={"color": "rgba(140, 148, 158, 0.35)", "width": 1.1},
-                name="26 Replayed Winters (2000–2026)" if first_gray else w_name,
+                name=f"{n_winters} Replayed Winters (2000–2026)",
                 showlegend=first_gray,
-                hovertemplate=f"Winter {w_name}: %{{y:,.0f}} Bcf<extra></extra>",
+                hoverinfo="skip",
             )
         )
         first_gray = False
@@ -254,7 +177,7 @@ else:
         )
     )
 
-    # LAYER 5: Median across all 26 scenarios as a bold navy line
+    # LAYER 5: Median across all scenarios as a bold navy line
     fig_fan.add_trace(
         go.Scatter(
             x=weekly_stats["period"],
@@ -267,21 +190,20 @@ else:
     )
 
     # LAYER 6: Marker for the five-year average end-of-March storage level
-    five_yr_march = sum_info.get("five_year_average_march", get_five_year_march_end_level())
+    five_yr_march = get_five_year_march_end_level()
     y_values_list = [outlook_df["storage"]]
-    if five_yr_march is not None and pd.notna(five_yr_march):
-        five_yr_val = float(five_yr_march)
-        y_values_list.append(pd.Series([five_yr_val]))
+    if five_yr_march is not None:
+        y_values_list.append(pd.Series([five_yr_march]))
         fig_fan.add_trace(
             go.Scatter(
                 x=[final_period],
-                y=[five_yr_val],
+                y=[five_yr_march],
                 mode="markers+text",
                 marker={"color": "#6C3483", "size": 11, "symbol": "diamond"},
-                text=[f"  5-Yr Avg ({five_yr_val:,.0f} Bcf)"],
+                text=[f"  5-Yr Avg ({five_yr_march:,.0f} Bcf)"],
                 textposition="middle left",
                 name="5-Year Avg End-of-March",
-                hovertemplate=f"5-Year Avg End-of-March: {five_yr_val:,.0f} Bcf<extra></extra>",
+                hovertemplate=f"5-Year Avg End-of-March: {five_yr_march:,.0f} Bcf<extra></extra>",
             )
         )
 
@@ -301,8 +223,8 @@ else:
     # The two required plain-English notes directly beneath the chart
     st.markdown(
         f"1. **Why the median ends below the {term_tip('five-year average and five-year range', 'five-year average')}:** "
-        f"Many of the 26 replayed winters (2000–2026) were colder than the five most recent winters, and baseline U.S. natural gas demand is higher today.\n"
+        f"Many of the replayed winters (2000–2026) were colder than the five most recent winters, and baseline U.S. natural gas demand is higher today.\n"
         f"2. **What these trajectories capture:** "
-        f"These 26 paths show how weather alone changes end-of-winter storage; because supply, exports, and power generation also fluctuate, the real uncertainty range is somewhat wider.",
+        f"These paths show how weather alone changes end-of-winter storage; because supply, exports, and power generation also fluctuate, the real uncertainty range is somewhat wider.",
         unsafe_allow_html=True,
     )

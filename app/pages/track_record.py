@@ -15,6 +15,7 @@ from app.components import (
     format_model_name,
     get_model_color,
     help_text,
+    is_published,
     render_empty_state,
     term_tip,
 )
@@ -227,6 +228,10 @@ def render() -> None:
     # load the data with a spinner
     with st.spinner("Loading live forecasts..."):
         df = prepare(load_live_forecasts())
+
+    # Hide a new forecast until it's published on the site (Sunday 5:30 PM Central)
+    if not df.empty:
+        df = df[df["actual"].notna() | df["target"].apply(is_published)].reset_index(drop=True)
 
     # nothing yet: friendly message instead of an empty page
     if df.empty:
