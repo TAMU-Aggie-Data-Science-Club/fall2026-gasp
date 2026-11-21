@@ -12,6 +12,7 @@ from app.components import (
     apply_chart_bounds,
     format_model_name,
     get_model_color,
+    is_published,
     render_empty_state,
     term_tip,
 )
@@ -45,7 +46,7 @@ def load_whatif(path: str | Path = db.DB_PATH) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# clean up the types and keep only the latest target week
+# clean up the types and keep only the latest published target week
 def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     if raw is None or raw.empty or any(c not in raw for c in ("model", "target", "weather_change_pct", "predicted")):
         return pd.DataFrame(columns=REQUIRED_COLUMNS)
@@ -57,6 +58,12 @@ def prepare(raw: pd.DataFrame) -> pd.DataFrame:
     for col in ("weather_change_pct", "predicted", "low", "high"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=["target", "weather_change_pct", "predicted"])
+
+    # Only weeks whose forecast is already shown on the site (Sunday 5:30 PM Central)
+    df = df[df["target"].apply(is_published)]
+    if df.empty:
+        return pd.DataFrame(columns=REQUIRED_COLUMNS)
+
     df = df[df["target"] == df["target"].max()]
     return df[REQUIRED_COLUMNS].sort_values(["model", "weather_change_pct"]).reset_index(drop=True)
 
@@ -212,6 +219,10 @@ def render_model(df: pd.DataFrame, model: str) -> None:
         f"Each point is {name}'s forecast if the week's weather had been that much different; "
         "the gray band is its likely range, and the diamond is the step you picked. "
         "Drag to zoom in, double-click to reset.",
+    )
+    st.caption(
+        "For unusually extreme weeks, the forecast can stop changing at the far ends of the slider: "
+        "the model can't predict beyond the most extreme weather it has seen."
     )
 
 

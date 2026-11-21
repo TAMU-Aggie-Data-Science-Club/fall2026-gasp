@@ -164,7 +164,7 @@ def render_last_updated(storage_week: str | None = None, weather_week: str | Non
         st.caption(" · ".join(parts))
 
 
-def render_empty_state(message: str = "The first live forecast runs Wednesday 11/11.") -> None:
+def render_empty_state(message: str = "This will appear here after the next weekly forecast.") -> None:
     """Show a friendly plain-English message instead of an error or blank chart when data isn't ready."""
     st.info(message)
 
