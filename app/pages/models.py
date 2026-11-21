@@ -74,9 +74,9 @@ else:
 
     # --- Section 1: Scoreboard Table ---
     st.subheader("1. Model Scoreboard (2021–2025 Backtest)")
-    # One-sentence "how to read this" explanation with hover tooltips on technical terms
+    # One-sentence explanation with hover tooltips on technical terms
     st.markdown(
-        f"How to read this table: Models are ranked from most accurate (lowest {term_tip('MAE')}) at the top to least accurate. "
+        f"Models are ranked from most accurate (lowest {term_tip('MAE')}) at the top to least accurate. "
         f"{term_tip('MAE')} measures average miss size in {term_tip('Bcf')}, {term_tip('RMSE')} penalizes large single-week misses more heavily, "
         f"and {term_tip('bias')} shows whether a model tends to over- or under-predict.",
         unsafe_allow_html=True,
@@ -211,7 +211,7 @@ else:
 # --- Section 3: MAE by Month ---
 st.subheader("3. Model MAE by Calendar Month")
 st.markdown(
-    f"How to read this chart: Shorter bars mean better accuracy—each bar shows a model's average error ({term_tip('MAE')}, in {term_tip('Bcf')}) "
+    f"Shorter bars mean better accuracy—each bar shows a model's average error ({term_tip('MAE')}, in {term_tip('Bcf')}) "
     f"for that month of the year across the backtest.",
     unsafe_allow_html=True,
     )

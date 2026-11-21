@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
+import html
+import re
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -56,6 +59,10 @@ GLOSSARY: dict[str, str] = {
     "SARIMAX": "An extension of SARIMA that adds external weather variables (Heating and Cooling Degree Days) to adjust the storage forecast for unusually hot or cold weeks.",
     "LightGBM": "A gradient-boosted decision tree machine learning model that learns nonlinear relationships between storage history, seasonal cycles, and regional weather.",
     "ensemble": "A combined forecast that averages the predictions of top statistical and machine learning models to reduce individual model blind spots.",
+    "contribution": "How many Bcf one input (like colder-than-normal weather) added to or subtracted from a model's forecast. Start from the model's average-week forecast, add up all the contributions, and you get its forecast for the week.",
+    "scenario": "One possible way the future could play out, such as storage through the winter if the weather repeated a past year's. Looking at many scenarios shows the range of outcomes instead of a single guess.",
+    "what-if": "A test that changes one thing, such as making this week's weather 20% colder, and shows how the forecast would change. It shows how much the forecast depends on the weather; it is not a prediction that the weather will change.",
+    "regional weather": "Heating and cooling degree days measured for separate parts of the country, such as the Midwest or the Northeast, instead of one national number, because gas demand depends on where it is cold or hot.",
 }
 
 
@@ -91,18 +98,58 @@ def help_text(term: str) -> str:
     return GLOSSARY.get(term, "")
 
 
+# id for a term's spot in the glossary, e.g. "surplus/deficit" -> "term-surplus-deficit"
+def term_id(term: str) -> str:
+    return "term-" + re.sub(r"[^a-z0-9]+", "-", term.lower()).strip("-")
+
+
+# styles for the term tooltips (loaded once per page from dashboard.py)
+TERM_TIP_CSS = """
+.term-tip { position: relative; display: inline; border-bottom: 1px dotted currentColor; cursor: help; }
+.term-tip .term-link { color: inherit; text-decoration: none; }
+.term-tip .tip-body {
+    display: none; position: absolute; left: 0; bottom: 100%; padding-bottom: 6px;
+    width: max-content; max-width: min(20rem, 80vw); z-index: 1000;
+    font-size: 0.875rem; font-weight: 400; line-height: 1.4; text-align: left; white-space: normal;
+}
+.term-tip .tip-box {
+    display: block; padding: 0.6rem 0.75rem; border-radius: 6px;
+    background: #18222C; color: #FFFFFF; border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.term-tip .tip-more { display: block; margin-top: 0.4rem; color: #9FD0FF; text-decoration: underline; }
+.term-tip:hover .tip-body, .term-tip:focus .tip-body, .term-tip:focus-within .tip-body { display: block; }
+/* on touch screens a tap shows the definition; the link to the glossary is inside it */
+@media (hover: none) { .term-tip .term-link { pointer-events: none; } }
+"""
+
+
+def inject_term_tip_css() -> None:
+    """Load the tooltip styles. Call once near the top of dashboard.py, before the page runs."""
+    css = f"<style>{TERM_TIP_CSS}</style>"
+    if hasattr(st, "html"):
+        st.html(css)
+    else:
+        st.markdown(css, unsafe_allow_html=True)
+
+
 def term_tip(term: str, label: str | None = None) -> str:
     """
-    Wrap a term in an HTML <abbr> tag so hovering over it shows its plain-English
-    glossary definition as a tooltip.
+    Wrap a term so its definition pops up on hover or tap, and clicking it opens the glossary
+    on the About page. Use inside st.markdown(..., unsafe_allow_html=True).
     """
-    display = label or term
-    definition = GLOSSARY.get(term, "").replace('"', "&quot;")
+    display = html.escape(label or term)
+    definition = GLOSSARY.get(term, "")
     if not definition:
         return display
+    link = f"about?term={term_id(term)}#{term_id(term)}"
     return (
-        f'<abbr title="{definition}" '
-        f'style="text-decoration: underline dotted #1B4F72; cursor: help;">{display}</abbr>'
+        '<span class="term-tip" tabindex="0">'
+        f'<a class="term-link" href="{link}" target="_self">{display}</a>'
+        '<span class="tip-body"><span class="tip-box">'
+        f"{html.escape(definition)}"
+        f'<a class="tip-more" href="{link}" target="_self">See the glossary</a>'
+        "</span></span></span>"
     )
 
 
