@@ -3,10 +3,20 @@ import os
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 # This function searches for your .env file and loads the variables inside
 load_dotenv()
+
+# EIA's API is sometimes slow, especially right after a report comes out, so retry a few times
+# (waits about 10, 20, 40 seconds between tries) before giving up
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(max_retries=Retry(
+    total=4, connect=4, read=4, backoff_factor=5,
+    status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",),
+)))
 
 #Created a helper function 
 def _get_api_key() -> str:
@@ -41,8 +51,8 @@ def fetch_series(series_id: str, start: str | None = None, end: str | None = Non
         if end is not None:
             params["end"] = end
 
-        #This will request a strict timeout to prevent hanging
-        response = requests.get(url, params=params, timeout=30)
+        #This will request a strict timeout to prevent hanging, retrying if EIA is slow
+        response = _session.get(url, params=params, timeout=30)
         #Making an exception if the request fails
         response.raise_for_status()
         #Reads this page's rows and the total number of rows EIA has
@@ -75,7 +85,7 @@ def latest_period(route: str = "natural-gas/stor/wkly") -> pd.Timestamp:
     api_key = _get_api_key()
     url = f"https://api.eia.gov/v2/{route.strip('/')}/"
 
-    response = requests.get(url, params={"api_key": api_key}, timeout=30)
+    response = _session.get(url, params={"api_key": api_key}, timeout=30)
     response.raise_for_status()
 
     end_period = response.json().get("response", {}).get('endPeriod')
